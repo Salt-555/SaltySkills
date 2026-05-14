@@ -1,0 +1,54 @@
+edit:
+  name: "protocol"
+  source_dir: "/tmp/ascii_output"
+  output_dir: "/tmp/glitch_output"
+  slowdown_factor: 1.0
+
+  segments:
+    - source: "vidcolors"
+      start_pct: 0
+      end_pct: 10
+    - source: "matrix"
+      start_pct: 10
+      end_pct: 16
+    - source: "vidcolors"
+      start_pct: 16
+      end_pct: 25
+    - source: "bw"
+      start_pct: 25
+      end_pct: 30
+    - source: "rainbow"
+      start_pct: 30
+      end_pct: 33
+    - source: "matrix"
+      start_pct: 33
+      end_pct: 37
+    - source: "vidcolors"
+      start_pct: 37
+      end_pct: 50
+    - source: "bw"
+      start_pct: 50
+      end_pct: 55
+    - source: "vidcolors"
+      start_pct: 55
+      end_pct: 65
+    - source: "matrix"
+      start_pct: 65
+      end_pct: 70
+    - source: "rainbow"
+      start_pct: 70
+      end_pct: 74
+    - source: "bw"
+      start_pct: 74
+      end_pct: 78
+    - source: "vidcolors"
+      start_pct: 78
+      end_pct: 100
+
+  allmind:
+    enabled: true
+    start_pct: 85
+    text: "ALLMIND"
+    font_size: 120
+    color: "#C5A55A"
+    shadow: true
