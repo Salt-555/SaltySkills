@@ -8,6 +8,30 @@ Skills are modular instruction sets that extend what Hermes can do. Each skill l
 
 ## Skills
 
+### threejs/threejs-game-dev
+
+Full Three.js game development guide: project scaffolding (Vite or self-contained HTML), the r128-global-CDN vs import-map reliability rules, third-person/FPS/top-down camera patterns, AABB collision without a physics engine, procedural IK movement, FPS gun-feel (sway springs, modeled-sight ADS, substepped projectile ballistics), and headless screenshot verification.
+
+**Tags:** `threejs` `game-dev` `fps` `collision` `camera` `ballistics`
+
+### threejs/threejs-gtk-webview
+
+GPU-accelerated UI overlays on Raspberry Pi 5 using GTK3 + WebKit2 WebView with embedded Three.js scenes — animated menus, visualizations, and interactive WebGL interfaces on Wayland. Covers the Chromium-kiosk HTTP overlay pattern (when per-pixel alpha fails), CSS-only fallbacks for kiosk mode's silent script skipping, resolution-aware layout, and WebGL context-loss recovery.
+
+**Tags:** `threejs` `gtk3` `webkit2` `wayland` `raspberry-pi` `overlay`
+
+### threejs/threejs-interactive-experiences
+
+Interactive 3D browser experiences: character controllers with Rapier physics (KCC), walkable environments, product showrooms and virtual stores. Third-person/first-person cameras, animation pipelines (Mixamo/gltf), raycast object interaction, raw-WebGL atmosphere layers, scroll-driven camera sites, and performance budgets for low-end GPUs.
+
+**Tags:** `threejs` `webgl` `rapier` `showroom` `scroll-sites` `interactive`
+
+### threejs/threejs-topdown-games
+
+Top-down / 2.5D Three.js games with vision-cone reveal gating (STALKER-style): pure-logic TDD'd core, tuned cone/proximity/LOS constants, swept-circle collision, and the proven 2D canvas overlay for drawing the beam (3D SpotLight approaches fail). Includes black-canvas debugging recipes — NaN camera positions, physically-correct light intensities on r155+, and headless smoke-scene capture contracts.
+
+**Tags:** `threejs` `top-down` `vision-cone` `reveal-gating` `lighting` `tdd`
+
 ### video/cinematic-beats
 
 Cinematic video style with short punchy TTS (one sentence max), visuals given full runtime to breathe, hard cuts, and user-provided music with ducking during speech. Check-in gates after each production phase for user review before proceeding. Includes VHS filter and vibey audio mixing scripts.

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>{{TITLE}}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #0a0a1a; touch-action: none; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #ui {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10;
+      font-family: 'Courier New', monospace; color: {{ACCENT_COLOR}};
+    }
+    #score {
+      position: absolute; top: 20px; right: 20px;
+      font-size: 24px; font-weight: bold; text-shadow: 0 0 10px rgba(127,179,168,0.5);
+    }
+    #start-screen, #game-over {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.7); pointer-events: auto;
+    }
+    #game-over { display: none; }
+    h1 { font-size: 36px; margin-bottom: 20px; text-shadow: 0 0 20px rgba(127,179,168,0.8); }
+    p { font-size: 16px; opacity: 0.8; margin-bottom: 30px; }
+    .btn {
+      padding: 15px 40px; font-size: 20px; background: transparent;
+      border: 2px solid {{ACCENT_COLOR}}; color: {{ACCENT_COLOR}}; cursor: pointer;
+      font-family: 'Courier New', monospace; text-transform: uppercase;
+      transition: all 0.3s;
+    }
+    .btn:hover, .btn:active { background: {{ACCENT_COLOR}}; color: #000; }
+    #final-score { font-size: 48px; margin-bottom: 10px; }
+    #controls-hint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      font-size: 14px; opacity: 0.6; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="start-screen">
+      <h1>{{TITLE}}</h1>
+      <p>{{SUBTITLE}}</p>
+      <button class="btn" id="start-btn">START</button>
+      <div id="controls-hint">{{CONTROLS_HINT}}</div>
+    </div>
+    <div id="game-over">
+      <p style="font-size:18px;">GAME OVER</p>
+      <div id="final-score">0</div>
+      <button class="btn" id="restart-btn">RESTART</button>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
