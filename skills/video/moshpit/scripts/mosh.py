@@ -28,18 +28,26 @@ def run(cmd, check=True):
         print(f"  ✗ Command failed with code {result.returncode}", file=sys.stderr)
         sys.exit(1)
 
-def mosh(input_video, start_frame=0, end_frame=-1, fps=30, delta=0, output_video="moshed.mp4"):
-    """Core datamoshing pipeline."""
+def mosh(input_video, start_frame=0, end_frame=-1, fps=30, delta=0, output_video="moshed.mp4", gop=9999):
+    """Core datamoshing pipeline.
+
+    gop: frames between I-frames in the intermediate MPEG-4 encode.
+         Default 9999 (single GOP — classic long-GOP datamosh, maximum melt).
+         For bloom/trail effects that must NOT collapse into a permanent
+         glitch loop, set a smaller gop (e.g. 48) so in-range I-frames act
+         as periodic refresh anchors: corruption builds, resets to clean,
+         re-builds — persistent moshing instead of terminal corruption.
+    """
     workdir = tempfile.mkdtemp(prefix="moshpit_")
     input_avifile = os.path.join(workdir, "input.avi")
     output_avifile = os.path.join(workdir, "output.avi")
 
     try:
-        # Step 1: Convert to MPEG-4 ASP AVI with long GOP, no B-frames
-        print(f"[1/3] Encoding intermediate AVI (long GOP, no B-frames)...")
+        # Step 1: Convert to MPEG-4 ASP AVI with configurable GOP, no B-frames
+        print(f"[1/3] Encoding intermediate AVI (GOP={gop}, no B-frames)...")
         run(
             f'ffmpeg -loglevel error -y -i "{input_video}" '
-            f'-c:v mpeg4 -vtag xvid -qscale:v 4 -g 9999 -bf 0 -r {fps} '
+            f'-c:v mpeg4 -vtag xvid -qscale:v 4 -g {gop} -bf 0 -r {fps} '
             f'-an "{input_avifile}"'
         )
 
@@ -142,6 +150,10 @@ Examples:
                         help="Output file (default: moshed.mp4)")
     parser.add_argument("-d", "--delta", type=int, default=0,
                         help="P-frame duplication count. 0 = I-frame removal mode.")
+    parser.add_argument("--gop", type=int, default=9999,
+                        help="Frames between I-frames in intermediate (default: 9999 = "
+                             "single long GOP). Smaller (e.g. 48) = periodic refresh "
+                             "anchors so bloom doesn't collapse into a permanent loop.")
 
     args = parser.parse_args()
 
@@ -156,6 +168,7 @@ Examples:
         fps=args.fps,
         delta=args.delta,
         output_video=args.output_video,
+        gop=args.gop,
     )
 
 

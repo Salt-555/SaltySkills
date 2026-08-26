@@ -221,6 +221,44 @@ def effect_ffglitch(input_video, output_path, preset_name):
     return True
 
 
+def effect_pixelsort(input_video, output_path, axis='rows', mode='interval',
+                     low=50, high=255):
+    """Pixelsort an existing video (chain after any datamosh)."""
+    sys.path.insert(0, str(SCRIPT_DIR))
+    from pixelsort_mosh import pixelsort_video
+    print(f"\n{'='*60}")
+    print(f"  PIXELSORT — {axis} / {mode} (luma {low}–{high})")
+    print(f"{'='*60}")
+    pixelsort_video(input_video, str(output_path), axis=axis, mode=mode,
+                    low=low, high=high, fps=None)
+    print(f"✓ Output: {output_path}")
+
+
+def effect_bloom_pixelsort(input_video, output_path, start=30, end=-1, fps=30,
+                           delta=8, axis='rows', mode='interval', low=50, high=255):
+    """Chained bloom datamosh → pixelsort. Datamoshes trailing squares, then
+    sorts them into streaks."""
+    import tempfile
+    from mosh import mosh as do_mosh
+    sys.path.insert(0, str(SCRIPT_DIR))
+    from pixelsort_mosh import pixelsort_video
+
+    print(f"\n{'='*60}")
+    print(f"  BLOOM + PIXELSORT — datamosh then sort the squares")
+    print(f"  bloom x{delta} (frames {start}→{end}) → {axis} pixelsort {low}–{high}")
+    print(f"{'='*60}")
+
+    with tempfile.TemporaryDirectory(prefix="moshpit_ps_") as td:
+        moshed = os.path.join(td, "bloom.mp4")
+        do_mosh(input_video, start_frame=start, end_frame=end, fps=fps,
+                delta=delta, output_video=moshed)
+        print(f"  ▶ Pixelsorting moshed output...")
+        pixelsort_video(moshed, str(output_path), axis=axis, mode=mode,
+                        low=low, high=high, fps=None)
+    print(f"✓ Output: {output_path}")
+    return True
+
+
 def effect_dual_reveal(fg_video, bg_video, output_path, preset_name="chaos", threshold=30):
     """Dual-layer glitch reveal.
 
@@ -252,7 +290,8 @@ def effect_dual_reveal(fg_video, bg_video, output_path, preset_name="chaos", thr
 
 
 def batch_generate(input_video, output_dir, effects=None, start=0, end=-1,
-                   background=None, preset="chaos", threshold=30):
+                   background=None, preset="chaos", threshold=30,
+                   ps_axis="rows", ps_mode="interval", ps_low=50, ps_high=255):
     """Generate multiple glitched variants."""
     info = get_video_info(input_video)
     fps = info["fps"]
@@ -308,6 +347,16 @@ def batch_generate(input_video, output_dir, effects=None, start=0, end=-1,
             elif effect == "bloom":
                 bloom_start = max(10, int(total_frames * 0.3)) if total_frames > 0 else 30
                 effect_bloom(input_video, out_file, start=bloom_start, end=end, fps=fps, delta=8)
+                success_count += 1
+            elif effect == "pixelsort":
+                effect_pixelsort(input_video, out_file, axis=ps_axis, mode=ps_mode,
+                                 low=ps_low, high=ps_high)
+                success_count += 1
+            elif effect == "bloom_pixelsort":
+                bloom_start = max(10, int(total_frames * 0.3)) if total_frames > 0 else 30
+                effect_bloom_pixelsort(input_video, out_file, start=bloom_start, end=end,
+                                       fps=fps, delta=8, axis=ps_axis, mode=ps_mode,
+                                       low=ps_low, high=ps_high)
                 success_count += 1
             elif effect == "lagfun_trail":
                 effect_lagfun_trail(input_video, out_file)
