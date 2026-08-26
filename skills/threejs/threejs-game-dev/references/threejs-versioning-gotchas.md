@@ -25,20 +25,21 @@ bodyGeo.translate(0, PLAYER_HEIGHT / 2 + offset, 0);
 
 **Cause**: DirectionalLight's shadow camera is fixed in world space. The frustum only covers the area where it was initially positioned.
 
-**Fix**: Update light position AND target every frame:
+**Fix**: Keep the light FIXED in world space; only move the shadow camera frustum and the light's target to follow the player. Moving the light position every frame makes shadows behave like a personal spotlight (shadows shift direction as you walk). This matches the canonical rule in `SKILL.md`:
 ```javascript
-sunLight.position.set(
-    playerGroup.position.x + 10,
-    20,
-    playerGroup.position.z + 10
-);
+// Light position stays FIXED (never moved with the player)
+sunLight.position.set(50, 80, -40);
+
+// Every frame — follow the player with the shadow frustum + target only
 sunLight.target.position.copy(playerGroup.position);
-// Also widen the shadow camera bounds to cover a reasonable area
 sunLight.shadow.camera.left = -25;
 sunLight.shadow.camera.right = 25;
 sunLight.shadow.camera.top = 25;
 sunLight.shadow.camera.bottom = -25;
+sunLight.shadow.camera.updateProjectionMatrix(); // CRITICAL after changing bounds
 ```
+
+> **Note:** an older variant updated `sunLight.position` alongside `target` every frame. That path works but is less correct (spotlight effect, inconsistent shadow direction) and is superseded by the fixed-light pattern above.
 
 ## Movement Axis Collapse Bug
 
@@ -57,6 +58,8 @@ if (keys.a) moveDir.sub(right);
 if (keys.d) moveDir.add(right);
 moveDir.normalize(); // Critical — prevents diagonal speed hack
 ```
+
+> **Note:** this manual-yaw approach only applies to the narrow yaw-only quaternion-collapse bug above (where you already have an explicit `yaw` value). For general third-person movement the **standard is `camera.getWorldDirection()`** projected onto the XZ plane (see `SKILL.md` §6) — it matches what the camera actually sees and avoids the sign-flip fragility of hand-rolled `sin/cos` vectors.
 
 ## Collision Detection Performance
 

@@ -90,7 +90,7 @@ Use 672x1008 (font-size 9) for fast iteration. Bump to 896x1344 for final render
   setpts instead: `setpts=2.5*PTS,fps=24`. Always verify segment durations with
   `ffprobe -show_entries format=duration` after extraction.
 - **ffmpeg concat silently drops segments** with different timebases — normalize fps/timebase first
-`drawtext` escaping — use hex colors, use `enable='gte(t,X)'` (no backslash before comma)
+- **`drawtext` escaping** — use hex colors, use `enable='gte(t,X)'` (no backslash before comma)
 - **vhs_polisher.py probes `stream=codec_type`** — make sure `show_entries=stream=codec_type,width,height,r_frame_rate` includes `codec_type` or the script crashes with KeyError
 - **glitch_editor.py per-segment slow** — each segment supports `slow: N` key (overrides global `slowdown_factor`). Script patches: reads `seg.get("slow", slowdown)` and uses it in setpts filter. Removed `-vsync cfr -r 24000/1001` which negated setpts duration changes.
 - **numpy frombuffer is read-only** — `.copy()` before mutation
@@ -104,8 +104,9 @@ Use 672x1008 (font-size 9) for fast iteration. Bump to 896x1344 for final render
   mux the original audio back: `ffmpeg -y -i polished.mp4 -i audio.aac -c:v copy -c:a aac -shortest final.mp4`
 - **vhs_polisher output dir** — script now auto-creates parent dirs (`os.makedirs`). If you see
   "No such file or directory" on the output path, verify the patch is applied.
-- **Config YAML format**: use multi-line YAML for segments, NOT semicolon syntax. The
-  fallback YAML parser in `glitch_editor.py` can't parse `- source: X; start_pct: 0; end_pct: 10`
-  on one line. Use separate keys per line for reliable parsing.
+- **Config YAML format**: segments may be written multi-line (recommended for readability) or as
+  semicolon one-liners (`- source: X; start_pct: 0; end_pct: 10`). The fallback parser in
+  `glitch_editor.py` handles BOTH formats, including indented `start_pct`/`end_pct` sub-keys.
+  Prefer separate keys per line for clarity.
 - **Per-segment slow-mo**: `glitch_editor.py` supports `slow: 2.5` per-segment (added 2025-05-13).
   Falls back to global `slowdown_factor` if omitted.

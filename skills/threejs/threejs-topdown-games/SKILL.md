@@ -6,7 +6,8 @@ author: Hermes Agent (curator)
 metadata:
   hermes:
     tags: [threejs, top-down, game-dev, vision-cone, reveal-gating, lighting, headless-capture, tdd]
-    related_skills: [threejs-game-dev, headless-gameplay-capture, game-logic-testing, test-driven-development]
+    related_skills: [threejs-game-dev, test-driven-development]
+    category: threejs
 ---
 
 # Three.js Top-Down Games
@@ -15,7 +16,7 @@ Verified guidance for building top-down / 2.5D Three.js games — especially
 STALKER-style games whose core mechanic is a **vision cone / reveal gating**
 (entities only exist when inside the player's cone + distance + line of sight,
 or within a small proximity radius). Everything below was proven in a complete
-build (a STALKER-style moon-survival stalker): TDD'd logic core,
+build (a STALKER-style, moon-survival game): TDD'd logic core,
 136 tests, headless-verified both scenes. Full build detail:
 `references/vision-cone-stalker-build.md`.
 
@@ -159,6 +160,13 @@ the working one is a screen-space 2D canvas:
   screenshotting at 8 facings), and the in-page state probes.
 
 ## Verification loop
+> **Note:** the probe scripts named below (`capture.mjs`, `facing-probe.mjs`,
+> `cone-profile.mjs`, `texprobe`/`matprobe`/`camprobe`/`beamprobe`/`abtest.mjs`)
+> are **per-project artifacts, not shipped with this skill**. Write your own
+> from the math, thresholds, and checklists described in this file and in
+> `references/vision-cone-beam-overlay.md` (they live in the original game
+> project). They are recreated per project from this guidance.
+
 1. `capture.mjs` + pageerror stacks (unminified build if needed).
 2. DOM dump after error (`window.__game`, element keys).
 3. Live probe of renderer/scene/camera state.

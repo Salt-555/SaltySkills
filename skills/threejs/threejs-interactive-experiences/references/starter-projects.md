@@ -41,7 +41,7 @@ const CLIP_AIR_IDLE   = 'Air Idle';
 const CLIP_WALK       = 'Walk';
 ```
 
-**Pros:** Most complete out of the box, explicitly designed as forkable template, well-documented customization guide, active maintenance (last commit Jan 2026)
+**Pros:** Most complete out of the box, explicitly designed as forkable template, well-documented customization guide, actively maintained
 **Cons:** Gaussian splat dependency is unnecessary for most use cases (but easily removed), pinned to Three.js r180
 
 ---
@@ -99,9 +99,9 @@ const CLIP_WALK       = 'Walk';
 
 ---
 
-### 5. threejs-games (mudroljub)
+### 5. threejs-games (threejs-games)
 
-**GitHub:** https://github.com/mudroljub/threejs-games
+**GitHub:** https://github.com/threejs-games/threejs-games
 **Live Demo:** https://threejs-games.github.io/
 **License:** MIT
 

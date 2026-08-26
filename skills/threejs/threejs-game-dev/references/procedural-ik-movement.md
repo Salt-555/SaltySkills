@@ -74,7 +74,9 @@ class Leg {
             // ... compute target position
         } else {
             // Stance: keep foot planted at last ground position
-            if (!this.plantedPos) this.plantedPos = /* initial ground pos */;
+            // Illustrative placeholder — initialize to the leg's world-space
+            // ground contact point at the moment it entered stance.
+            if (!this.plantedPos) this.plantedPos = /* world-space foot/ground contact pos */;
             return this.plantedPos;
         }
     }

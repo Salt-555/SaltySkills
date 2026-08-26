@@ -40,7 +40,7 @@ fuser -k 8765/tcp 2>/dev/null || true
 # Start HTTP server (with Wayland env)
 export WAYLAND_DISPLAY=wayland-0
 cd "$SCRIPT_DIR"
-python3 allmind-launcher-server.py &
+python3 overlay-server.py &
 SERVER_PID=$!
 sleep 0.5
 
@@ -61,7 +61,7 @@ wait $SERVER_PID 2>/dev/null
 rm -f "$LOCK_FILE"
 ```
 
-## Server (`allmind-launcher-server.py`)
+## Server (`overlay-server.py`)
 
 Minimal HTTP server serving HTML + handling commands:
 
@@ -92,10 +92,18 @@ class LauncherHandler(http.server.SimpleHTTPRequestHandler):
             name = params.get('name', [''])[0]
             exec_cmd = params.get('exec', [''])[0]
             if name and exec_cmd:
-                subprocess.Popen(['sh', '-c', exec_cmd])
+                # CRITICAL: Use setsid + start_new_session to detach the launched app
+                subprocess.Popen(
+                    ['setsid', 'sh', '-c', exec_cmd],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True
+                )
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'OK')
+            # CRITICAL: Exit server to close Chromium and return to Waybar
+            os._exit(0)
             
         elif self.path == '/select':
             # Selection change notification (log only)

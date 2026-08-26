@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 // ─── CONFIG (edit these to customize) ──────────────────
 const LANES = [-3, 0, 3]           // x positions (left, center, right)
-const LANE_WIDTH = 1.5             // smooth transition speed factor
+const LANE_WIDTH = 1.5             // smooth lane-transition lerp coefficient
 const BASE_SPEED = 12              // forward speed units/s
 const BOOST_MULTIPLIER = 0.4       // slow-mo factor during boost
 const OBSTACLE_SPAWN_Z = -80       // where obstacles spawn relative to player
@@ -295,8 +295,10 @@ function update(dt) {
     // Mark passed for scoring
     if (!o.passed && o.mesh.position.z > player.position.z) o.passed = true
 
-    // Remove off-screen obstacles
+    // Remove off-screen obstacles (dispose GPU resources first)
     if (o.mesh.position.z > DESPAWN_Z) {
+      o.mesh.geometry.dispose()
+      o.mesh.material.dispose()
       scene.remove(o.mesh)
       obstacles.splice(i, 1)
     }

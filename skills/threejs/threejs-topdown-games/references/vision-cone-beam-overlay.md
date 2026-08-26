@@ -74,7 +74,12 @@ fixed the in-canvas behavior; screenshots still couldn't be trusted for the
 overlay (headless canvas-over-WebGL readback), so verify via the canvas's own
 pixels, not the screenshot.
 
-## Verification scripts (in the project's `scripts/`)
+## Verification scripts (per-project artifacts — not shipped here)
+
+These scripts are **not included in this skill**. They live in the original
+game project and must be written per project from the math and thresholds
+described above. Recreate them from this guidance rather than expecting them
+in-repo.
 
 - `facing-probe.mjs` — 8-facing capture; also reports true player screen
   position via raw matrix projection (`camera.matrixWorldInverse` +

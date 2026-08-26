@@ -49,7 +49,7 @@ Mixamo (mixamo.com) is Adobe's free library of 3D character animations. All anim
    });
    
    // In render loop:
-   mixer.getDelta(); // or mixer.update(deltaTime);
+   mixer.update(delta);
    ```
 
 ## Animation State Machine Pattern

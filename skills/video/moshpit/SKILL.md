@@ -1,7 +1,7 @@
 ---
 name: moshpit
-description: Datamoshing and video glitch effects pipeline. Takes a video, produces multiple glitched variations via I-frame removal, P-frame duplication, FFglitch motion vectors, and FFmpeg lagfun trails. Use when user wants to datamosh, glitch, or corrupt video footage artistically.
-category: creative
+description: Use when user wants to datamosh, glitch, or corrupt video footage artistically. A video datamoshing and glitch effects pipeline that produces multiple glitched variations via I-frame removal, P-frame duplication, FFglitch motion vectors, and FFmpeg lagfun trails.
+category: video
 ---
 
 # Moshpit — Video Datamoshing Pipeline
@@ -14,14 +14,14 @@ Glitch art tool that takes a source video and produces multiple corrupted/glitch
 - **FFglitch 0.10.2** (`ffedit`, `ffgac`, `qjs`) — installed at `/usr/local/bin/`
 - **Python 3 + numpy** — system packages (numpy 2.4.3)
 
-Install FFglitch if missing (x86_64 build — this machine is x86_64, NOT aarch64):
+Install FFglitch if missing (x86_64 build — this box is NOT aarch64):
 ```bash
 curl -L -o /tmp/ffglitch.7z "https://ffglitch.org/pub/bin/linux64/ffglitch-0.10.2-linux-x86_64.7z"
 cd /tmp && 7z x ffglitch.7z   # needs p7zip/7zip: sudo pacman -S 7zip
 sudo cp ffglitch-0.10.2-linux-x86_64/ffedit ffglitch-0.10.2-linux-x86_64/ffgac \
         ffglitch-0.10.2-linux-x86_64/qjs ffglitch-0.10.2-linux-x86_64/fflive /usr/local/bin/
 ```
-> **Architecture note (Salt's box):** this machine is x86_64. The binaries in the README's original `linux-aarch64` block will NOT run here — use `linux64/` → `ffglitch-0.10.2-linux-x86_64.7z` from `https://ffglitch.org/pub/bin/linux64/`. Both `ffedit` and `ffgac` are pure `shutil.which()` PATH lookups, so `/usr/local/bin` is all they need; no per-script path config.
+`ffedit`/`ffgac` are pure `shutil.which()` PATH lookups — `/usr/local/bin` suffices; no per-script path config.
 
 ## Scripts
 
@@ -179,13 +179,14 @@ python scripts/ffglitch_mosh.py input.mp4 --script my_filter.js -o output.mpg
 python scripts/ffglitch_mosh.py source.mp4 --extract vectors.dat
 python scripts/ffglitch_mosh.py target.mp4 --transfer vectors.dat -o result.mpg --mp4
 ```
+> **`--transfer` limitation:** ffedit 0.10.2 segfaults (exit 139) when transferring vectors to a *different* video. Only **self-apply** works — pass the SAME source video to `--transfer` that the vectors were extracted from.
 
 ## Workflow for Agent Use
 
 When the user provides a video and asks for datamoshing/glitch effects:
 
 1. **Verify input exists** — check file path, get duration/resolution via ffprobe
-2. **Choose effects** based on user request, or default to `melt bloom lagfun_trail chaos wave`
+2. **Choose effects** based on user request, or default to `melt bloom lagfun_trail chaos wave` — a fast, lightweight subset. (Note: this differs from the script's `all` default, which runs the full 17-effect set. Use the subset for speed or run `--effects all` for everything.)
 3. **Run moshpit.py** with the selected effects and output directory
 4. **Report results** — list generated files with sizes
 

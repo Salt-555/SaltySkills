@@ -10,6 +10,8 @@ Player could land *inside* boxes instead of on top. Y-overlap hack allowed clipp
 
 ### Single-Pass Collision Resolver
 
+> **Illustrative:** the resolver below references a few assumed values — `obstacleCenter` = the obstacle box center (`obstacleBox.getCenter(...)`), `playerBottom` = the player's foot Y (`pos.y`), and `boxTop` = `obstacleBox.max.y`. Treat them as defined where this is shown; the surrounding project wires them in.
+
 ```javascript
 // Pre-allocated — NEVER allocate during collision
 this._playerBox = new THREE.Box3();

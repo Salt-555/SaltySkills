@@ -16,6 +16,11 @@ Usage:
   python ffglitch_mosh.py input.mp4 --script my_filter.js -o output.avi
   python ffglitch_mosh.py source.mp4 --extract vectors.json
   python ffglitch_mosh.py target.mp4 --transfer vectors.json -o result.avi
+
+WARNING (--transfer): Applying extracted vectors to a DIFFERENT video (cross-file
+transfer) segfaults ffedit 0.10.2 (exit 139, verified). Only self-apply works —
+pass the SAME source video to --transfer so vectors are re-applied onto the video
+they were extracted from. Cross-file transfer is unsupported; do not use it.
 """
 
 import os
@@ -384,6 +389,12 @@ def extract_vectors(input_video, output_json):
 
 
 def transfer_vectors(input_video, vectors_file, output_video):
+    """Re-apply extracted motion vectors onto a video via ffedit.
+
+    WARNING: ffedit 0.10.2 segfaults (exit 139) when vectors are transferred to a
+    DIFFERENT video (cross-file transfer). Only SELF-APPLY works reliably: pass the
+    same source video the vectors were extracted from.
+    """
     if not os.path.isfile(vectors_file):
         print(f"Error: Vectors file '{vectors_file}' not found.", file=sys.stderr)
         sys.exit(1)

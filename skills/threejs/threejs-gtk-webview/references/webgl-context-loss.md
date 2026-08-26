@@ -30,6 +30,7 @@ Canvas2D is CPU-rendered and guaranteed to work. Same PS2 memory card aesthetic 
 const canvas = document.createElement('canvas');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+const scanlinesOverlay = document.getElementById('scanlines');
 document.body.insertBefore(canvas, scanlinesOverlay);
 const ctx = canvas.getContext('2d');
 

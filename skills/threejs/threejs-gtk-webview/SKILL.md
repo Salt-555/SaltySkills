@@ -1,21 +1,42 @@
 ---
 name: threejs-gtk-webview
-description: Build GPU-accelerated UI overlays on Raspberry Pi 5 using GTK3 + WebKit2 WebView with Three.js scenes. Covers the full pattern for animated menus, visualizations, and interactive WebGL interfaces on Wayland.
-triggers:
-  - gtk webkit threejs overlay
-  - pi5 gpu accelerated ui
-  - wayland animated menu
-  - webview gtk python
-  - threejs raspberry pi
-  - gtk3 webgl overlay
-  - chromium kiosk overlay wayland
-  - http server overlay pi5
-  - radial app launcher wayland
+description: GPU-accelerated Three.js + GTK/Chromium UI overlays on Pi 5
+category: threejs
+version: 1.0.0
+author: SaltySkills
+license: MIT
+platforms:
+  - linux
+metadata:
+  hermes:
+    tags:
+      - gtk
+      - webkit
+      - threejs
+      - webgl
+      - wayland
+      - overlay
+      - raspberry-pi
+      - chromium
+      - kiosk
 ---
 
 # Three.js + GTK WebView UI Overlays on Pi 5
 
 Build GPU-accelerated interactive overlays (radial menus, visualizations) using GTK3 + WebKit2 WebView with embedded Three.js scenes. VideoCore VII handles WebGL natively on Pi 5.
+
+## When to Use
+
+Use this skill to build full-screen, GPU-accelerated interactive UI overlays on the Raspberry Pi 5 (radial app launchers, menus, visualizations) driven by Three.js/WebGL or Canvas2D.
+
+**Do NOT use GTK+WebKit2 on Wayland.** Per-pixel alpha compositing (`app_paintable` + `rgba_visual`) produces horizontal banding/gaps on Wayland compositors. On Wayland (labwc, sway, etc.) use the HTTP server + Chromium kiosk pattern in `references/http-chromium-overlay.md`. Only reach for GTK+WebKit2 on X11 (Xorg) sessions.
+
+## Prerequisites
+
+- Raspberry Pi 5 (VideoCore VII) or any Linux host with WebKit2GTK / Chromium
+- Wayland compositor (labwc, sway) or an X11 (Xorg) session
+- GTK+WebKit2 path: `gir1.2-webkit2-4.1` GI bindings (`sudo apt-get install -y gir1.2-webkit2-4.1`) + Python 3 with `gi`
+- HTTP+Chromium path: a Chromium build with Wayland support (`--ozone-platform=wayland`)
 
 ## ⚠️ CRITICAL: Wayland Compatibility — Use HTTP+Chromium Instead
 
@@ -109,6 +130,7 @@ def on_message(self, manager, message):
 ## Python Wrapper Skeleton
 
 ```python
+import os
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('WebKit2', '4.1')
@@ -122,7 +144,11 @@ class OverlayWindow(Gtk.Window):
         display = Gdk.Display.get_default()
         if display:
             monitor = display.get_monitor(0)
-            w, h = monitor.get_geometry().width, monitor.get_geometry().height if monitor else (800, 480)
+            if monitor:
+                geom = monitor.get_geometry()
+                w, h = geom.width, geom.height
+            else:
+                w, h = 800, 480
         else:
             w, h = 800, 480
         
@@ -139,7 +165,8 @@ class OverlayWindow(Gtk.Window):
         if visual:
             self.set_visual(visual)
         
-        # WM_CLASS for labwc window rules (Wayland app_id matching)
+        # WM_CLASS for labwc window rules — matched via XWayland (GDK_BACKEND=x11),
+        # NOT native Wayland app_id. See references/labwc-window-rules-and-gtk-widgets.md
         self.set_wmclass("my-overlay", "my-overlay")
         
         # WebKit2 setup
@@ -259,6 +286,7 @@ Canvas2D can achieve the same PS2 memory card aesthetic without any GPU dependen
 const canvas = document.createElement('canvas');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+const scanlinesOverlay = document.getElementById('scanlines');
 document.body.insertBefore(canvas, scanlinesOverlay);
 const ctx = canvas.getContext('2d');
 
@@ -342,10 +370,8 @@ When the launcher shows garbage or doesn't render:
 3. **Check for WebGL context loss**: background visible between scanlines = switch to Canvas2D
 4. **Verify canvas sizing**: check that `canvas.width === window.innerWidth` in JS console
 5. **Test in Chromium first**: open the HTML file directly in Chromium (`chromium-browser file:///path/to/scene.html`) — if it works there but not in launcher, the issue is GTK/WebView integration, not the scene itself
-- `webview-gtk4` — future migration path when GTK4 + WebKit6 bindings become available on Pi OS Bookworm
 
-## Reference Files
-- `references/webgl-context-loss.md` — diagnostic guide for WebGL context loss symptoms and Canvas2D fallback pattern
+## Window Types
 - `Gdk.WindowTypeHint.DOCK` — layers above system panels (best for overlays)
 - `Gdk.WindowTypeHint.SPLASHSCREEN` — sits behind system bars
 - Use `DOCK` for launcher menus that should cover everything
@@ -364,15 +390,22 @@ def _on_map(self, widget, event):
 ```
 
 ### App ID Matching for Window Rules
-GTK3 on Wayland uses the **binary filename** as app_id. A wrapper script is required:
+
+For persistent, rule-positioned widgets, match labwc `identifier=` rules via **WM_CLASS on XWayland** — NOT native Wayland app_id. Session-verified on labwc 0.9.8: on native Wayland GTK3 (`GDK_BACKEND=wayland`) the binary-name/wrapper-name app_id trick does NOT make `identifier=` rules match, even with `GLib.set_prgname()` and a matching wrapper name. See `references/labwc-window-rules-and-gtk-widgets.md`.
 
 ```bash
 #!/bin/bash
-export GDK_BACKEND=wayland
+export GDK_BACKEND=x11
 exec python3 /path/to/overlay.py "$@"
 ```
 
-Name it `my-overlay`, make executable, then labwc window rules with `identifier="my-overlay"` will match.
+In Python, set WM_CLASS so labwc matches the rule via WM_CLASS:
+
+```python
+self.set_wmclass("my-overlay", "my-overlay")
+```
+
+Verify the match with `DISPLAY=:0 xprop WM_CLASS`. Use native Wayland for self-positioning POPUP/SPLASH launchers; use XWayland for persistent rule-positioned widgets.
 
 ## Reference Files
 - `references/webgl-context-loss.md` — diagnostic guide for WebGL context loss symptoms and Canvas2D fallback pattern
@@ -383,6 +416,8 @@ Name it `my-overlay`, make executable, then labwc window rules with `identifier=
 ## Templates
 - `templates/launcher-wrapper.sh` — bash wrapper that starts the HTTP server and launches Chromium in kiosk mode
 - `templates/overlay-server.py` — minimal Python HTTP server for serving overlay HTML with /launch, /select, /close endpoints
+
+## Additional Notes
 - **WebKit2 GI bindings are NOT the same as browser APIs** — no `UserContentController`, different method names (`set_enable_*` not `set_property`)
 - **Construction order is strict** — register handler → create WebView with manager → set settings after
 - **Three.js r128+ recommended** — older versions may have WebGL compatibility issues on VideoCore VII
@@ -402,5 +437,10 @@ Name it `my-overlay`, make executable, then labwc window rules with `identifier=
 - **Cursor hidden behind WebGL canvas** — if using `cursor: none` on body, the cursor disappears entirely. For overlays where you want cursor visibility (navigation), use `cursor: default` on body and add `pointer-events: none` to the canvas element so mouse events pass through to underlying HTML elements.
 - `webview-gtk4` — future migration path when GTK4 + WebKit6 bindings become available on Pi OS Bookworm
 
-## Reference Files
-- `references/webgl-context-loss.md` — diagnostic guide for WebGL context loss symptoms and Canvas2D fallback pattern
+## Verification
+
+- **HTTP+Chromium path**: run `templates/launcher-wrapper.sh`, confirm Chromium opens the overlay fullscreen, trigger `/launch`, then verify the server exits (`os._exit(0)`), returning control to Waybar, and the launched app runs detached via `setsid`.
+- **GTK+WebKit2 path (X11 only)**: the overlay window renders without scanline banding; a script-message round-trip (JS `postMessage` → Python `on_message`) returns the expected payload.
+- **No WebGL context loss**: background must NOT be visible between scanlines; if it is, switch to Canvas2D (`references/webgl-context-loss.md`).
+- **labwc rules**: if using `identifier=` window rules, verify the match with `DISPLAY=:0 xprop WM_CLASS` on XWayland (`references/labwc-window-rules-and-gtk-widgets.md`).
+- **Syntax sanity-check templates** after edits: `bash -n templates/launcher-wrapper.sh` and `python3 -m py_compile templates/overlay-server.py`.

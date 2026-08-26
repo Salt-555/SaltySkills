@@ -44,39 +44,81 @@ def parse_yaml(path):
     if yaml:
         with open(path) as f:
             return yaml.safe_load(f)
-    # Minimal YAML parser for the config format
+    # Minimal fallback YAML parser for the config format.
+    # Handles BOTH segment styles:
+    #   semicolon one-liner:  - source: X; start_pct: 0; end_pct: 10
+    #   multi-line:           - source: X
+    #                           start_pct: 0
+    #                           end_pct: 10
+    # (the indented sub-keys are tracked onto the current segment).
+    # Values are stripped of matching quotes consistently.
     cfg = {"edit": {"segments": [], "allmind": {}}}
+    edit = cfg["edit"]
+    cur_seg = None
+    section = None  # "edit" | "segments" | "allmind"
+
+    def assign_segment(seg, key, val):
+        if key == "source":
+            seg["source"] = val
+        elif key == "start_pct":
+            seg["start_pct"] = float(val)
+        elif key == "end_pct":
+            seg["end_pct"] = float(val)
+        elif key == "slow":
+            seg["slow"] = float(val)
+
     with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("#") or not line:
+        for raw_line in f:
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#"):
                 continue
-            if ":" in line:
-                k, v = line.split(":", 1)
-                k, v = k.strip(), v.strip().strip("'\"")
-                if k == "name":
-                    cfg["edit"]["name"] = v
-                elif k == "source_dir":
-                    cfg["edit"]["source_dir"] = v
-                elif k == "output_dir":
-                    cfg["edit"]["output_dir"] = v
-                elif k == "slowdown_factor":
-                    cfg["edit"]["slowdown_factor"] = float(v)
-                elif k.startswith("- "):
-                    seg = {}
-                    parts = [p.strip() for p in line[2:].split(";")]
-                    for p in parts:
-                        if ":" in p:
-                            sk, sv = p.split(":", 1)
-                            sk, sv = sk.strip(), sv.strip()
-                            if sk == "source":
-                                seg["source"] = sv
-                            elif sk == "start_pct":
-                                seg["start_pct"] = float(sv)
-                            elif sk == "end_pct":
-                                seg["end_pct"] = float(sv)
-                    if seg:
-                        cfg["edit"]["segments"].append(seg)
+
+            # Segment start: "- source: X" or "-" with sub-keys on later lines
+            if stripped.startswith("-"):
+                body = stripped[1:].strip()
+                seg = {}
+                for part in [p.strip() for p in body.split(";")]:
+                    if ":" in part:
+                        sk, sv = part.split(":", 1)
+                        assign_segment(seg, sk.strip(), sv.strip().strip("'\""))
+                edit["segments"].append(seg)
+                cur_seg = seg
+                section = "segments"
+                continue
+
+            if ":" not in stripped:
+                continue
+
+            k, v = stripped.split(":", 1)
+            k, v = k.strip(), v.strip().strip("'\"")
+
+            if k == "segments":
+                section = "segments"
+            elif k == "allmind":
+                section = "allmind"
+            elif k == "name":
+                edit["name"] = v
+                section = "edit"
+            elif k == "source_dir":
+                edit["source_dir"] = v
+                section = "edit"
+            elif k == "output_dir":
+                edit["output_dir"] = v
+                section = "edit"
+            elif k == "slowdown_factor":
+                edit["slowdown_factor"] = float(v)
+                section = "edit"
+            elif section == "allmind":
+                av = v
+                if k == "start_pct":
+                    av = float(v)
+                elif k == "font_size":
+                    av = int(v)
+                elif k in ("enabled", "shadow"):
+                    av = v.lower() == "true"
+                edit["allmind"][k] = av
+            elif section == "segments" and cur_seg is not None:
+                assign_segment(cur_seg, k, v)
     return cfg
 
 
@@ -150,7 +192,7 @@ def main():
     allmind_cfg = edit.get("allmind", {})
     if allmind_cfg and allmind_cfg.get("enabled"):
         asm_dur = get_duration(temp_mp4)
-        overlay_start = asm_dur * allmind_cfg["start_pct"] / 100.0
+        overlay_start = asm_dur * float(allmind_cfg.get("start_pct", 85)) / 100.0
         font_path = allmind_cfg.get("font_path", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
         color = allmind_cfg.get("color", "#C5A55A")
         fs = allmind_cfg.get("font_size", 120)

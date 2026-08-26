@@ -31,9 +31,9 @@ python3 scripts/vibey-mix.py beats/beat-XX/audio.mp3
 cp beats/beat-XX/audio-dynamic.mp3 beats/beat-XX/audio-filtered.mp3
 ```
 
-**Locked parameters (max-crush variant):**
-- **Decimation:** 8× (drops every 8th sample, zero-order hold upsampling)
-- **Quantization:** 5-bit baseline → 3-bit during dips
+**Locked parameters (dec5-bit8 variant):**
+- **Decimation:** 5× (drops every 5th sample, zero-order hold upsampling)
+- **Quantization:** 8-bit (constant)
 - **Dry/wet baseline:** 80% dry / 20% wet
 - **Dip pattern:** Every ~1.2s, dry drops to ~35%, wet rises to ~65% (duration ~0.25s)
 - **Tremolo on wet only:** 4Hz triangle wave, depth 70% (wet pulses between 30-100%)
@@ -45,12 +45,12 @@ cp beats/beat-XX/audio-dynamic.mp3 beats/beat-XX/audio-filtered.mp3
 
 | Parameter | Current | Effect of Change |
 |-----------|---------|------------------|
-| `osr=2000` (ffmpeg) / decim=8 (python) | 2000 Hz / 8× | Lower = more extreme crunch (1000-4000 range for ffmpeg; 3-10x for python). **Current: 8×** |
+| `osr=2000` (ffmpeg) / decim=5 (python) | 2000 Hz / 5× | Lower = more extreme crunch (1000-4000 range for ffmpeg; 3-10x for python). **Current: 5×** |
 | `volume=0.3` (wet static) | 30% static, 20-65% dynamic | Higher = more artifacts audible (0.15-0.40 range for static) |
 | `lowpass=f=2500` | 2500 Hz | Lower = tamer harshness, higher = brighter crunch |
 | `acompressor ratio` | 4:1 | Higher = more "glued" but less dynamic |
-| Decimation (dynamic) | 8× | Current locked value. 3-10x range for experimentation |
-| Quantization bits (baseline/dip) | 5-bit / 3-bit | Lower = more extreme. 4-bit/2-bit would be nuclear, 6-bit/4-bit lighter |
+| Decimation (dynamic) | 5× | Current locked value. 3-10x range for experimentation |
+| Quantization bits | 8-bit | Lower = more extreme. 6-bit/4-bit lighter, 4-bit/2-bit would be nuclear |
 | Dip interval | ~1.2s | Shorter = more frequent glitches |
 | Dip depth | dry→0.35, wet→0.65 | Lower dry = more aggressive glitch effect |
 | Tremolo frequency (wet) | 4Hz triangle wave | Higher = faster pulsing, lower = slower throbbing |
@@ -178,7 +178,7 @@ This creates rhythmic texture — the voice is mostly clear but periodically "gl
 - **May 28, 2026:** Initial discovery session. Tested bitcrush, radio filters, pitch modulation, dry/wet mixing. Locked in: dry/wet at 70/30 with 2kHz crush + lowpass + compression glue.
 - **User preference:** "light" artifacts — heavy crunch mixed low under clean signal rather than crushing the whole signal.
 - **May 28 (later):** Discovered zero-order hold upsampling for correct-pitch bitcrush. User liked dec5-bit8 texture. Added dynamic mixing with periodic dips revealing more crunch underneath.
-- **Final iteration:** User wanted "more vibey" → added tremolo on wet signal (4Hz triangle wave) and slapback delay (80ms, -18dB). Then wanted "more bitcrush" → escalated to max-crush: 8× decimation, 5-bit→3-bit quantization during dips.
+- **Final iteration:** User wanted "more vibey" → added tremolo on wet signal (4Hz triangle wave) and slapback delay (80ms, -18dB). Locked in the shipped `dec5-bit8` chain: 5× decimation with 8-bit quantization, plus dynamic dips raising the wet level during the mix.
 - **Script consolidation:** Moved `vibey-mix.py` from scattered `audio_cache/` into skill's own `scripts/` directory for self-containment.
 
 ## Discovery Log — What Didn't Work

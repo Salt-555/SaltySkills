@@ -2,6 +2,10 @@
 name: threejs-game-dev
 description: Guide Three.js game development from setup through architecture.
 version: 0.2.0
+category: game-development
+related_skills:
+  - llm-wiki
+  - obsidian
 metadata:
   hermes:
     tags: [Three.js, Game Dev, WebGL, 3D, Architecture]
@@ -56,7 +60,7 @@ User preference: **modular from day one**, not monolithic files. Even small demo
 ```\nproject/\n├── index.html          # Minimal entry point + import map\n└── src/\n    ├── main.js         # Game loop — ties subsystems together, does NOT contain game logic\n    ├── Input.js        # Keyboard/mouse state only (decoupled from movement)\n    ├── SpritePlayer.js # Billboarded 2D character with walk bobbing and collision\n    ├── Camera.js       # View logic (third-person orbit, first-person, etc.)\n    ├── World.js        # Scene, lighting, obstacles, shadow management\n    ├── NPC.js          # Non-player characters with interaction radius checks\n    └── DialogueSystem.js # Camera shifts, typewriter text, choice buttons
 ```
 
-Each class has ONE responsibility. `main.js` orchestrates; it never calculates movement or handles input directly. See `references/modular-pattern.md` for the full pattern with code examples from a working third-person game.
+Each class has ONE responsibility. `main.js` orchestrates; it never calculates movement or handles input directly. See `references/collision-resolution.md` for the modular pattern with code examples from a working third-person game.
 
 ## How to Run
 
@@ -64,6 +68,14 @@ Each class has ONE responsibility. `main.js` orchestrates; it never calculates m
 2. Write game code in source files, reference via `read_file` when editing or reviewing
 3. Iterate on architecture patterns described below using `patch` for modifications
 4. Test in browser via Vite dev server
+
+> **Templates need Vite + npm.** The provided templates use bare ESM imports (`import * as THREE from 'three'`) and a `<script type="module">` entry, so they cannot run from `file://`. Run them with Vite and install Three.js from npm first:
+> ```bash
+> npm init -y
+> npm i three
+> npm i -D vite
+> npx vite --host
+> ```
 
 ### Quick Start Template (Infinite Runner)
 
@@ -171,9 +183,9 @@ moveDir.normalize().multiplyScalar(this.speed * delta);
 import * as RAPIER from '@dimforge/rapier3d-compat'
 
 // Initialize once at startup
-await RAPIPER.init()
+await RAPIER.init()
 const gravity = { x: 0, y: -9.81, z: 0 }
-const world = new RAPIPER.World(gravity)
+const world = new RAPIER.World(gravity)
 
 function physicsStep(dt: number): void {
   world.step()
@@ -218,20 +230,22 @@ With Rapier, register rigid bodies with collision flags:
 ```typescript
 const bodyDesc = RAPIER.RigidBodyDesc.fixed()
   .setTranslation(pos.x, pos.y, pos.z)
-bodyDesc.setSensor(true) // for triggers (no physics response)
-// or: bodyDesc.setLinearDamping(0.9) for realistic movement
+const body = world.createRigidBody(bodyDesc)
 
-const handle = world.createRigidBody(bodyDesc)
+// Sensors live on the ColliderDesc, NOT the RigidBodyDesc (Rapier 0.20)
+const sensorDesc = RAPIER.ColliderDesc.cuboid(x, y, z).setSensor(true) // for triggers (no physics response)
+const sensorHandle = world.createCollider(sensorDesc, body)
+// or: a non-sensor collider with .setRestitution/.setFriction for realistic movement
 ```
 
-Use `world.colliders.forEach()` with overlap checks or raycasting for interactions.
+Now that a collider exists, use `world.colliders.forEach()` with overlap checks or raycasting for interactions.
 
 ### 6. Third-Person Movement Math (No Physics Engine)
 
 **Standard approach: use `camera.getWorldDirection()` — NOT manual yaw math.** Deriving forward/right from the actual camera view direction is the textbook standard for third-person games and eliminates sign-flip bugs that plague manual trig approaches. Pass the camera to your player's update method:
 
 ```javascript
-update(input, camera, obstacleBoxes) {
+update(input, camera, obstacleBoxes, delta) {
     // Get camera's actual forward direction (projected onto XZ plane)
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
@@ -248,7 +262,7 @@ update(input, camera, obstacleBoxes) {
     if (input.isDown('KeyD')) moveDir.add(right);     // D = right relative to camera
 
     if (moveDir.lengthSq() > 0) {
-        moveDir.normalize().multiplyScalar(this.speed);
+        moveDir.normalize().multiplyScalar(this.speed * delta); // delta is non-negotiable
         this.group.position.add(moveDir);
     }
 }
@@ -279,7 +293,7 @@ if (!collides(nextPos)) {
 }
 ```
 
-Pre-compute obstacle bounding boxes once at startup (`new THREE.Box3().setFromObject(mesh)`) — never recalculate per frame. See `references/movement-and-collision.md` for full working implementation.
+Pre-compute obstacle bounding boxes once at startup (`new THREE.Box3().setFromObject(mesh)`) — never recalculate per frame. See `references/collision-resolution.md` for full working implementation.
 
 ### 7. Shadow Management (Static Light + Moving Frustum)
 
@@ -312,7 +326,7 @@ updateShadows(playerPos) {
 
 **Critical pitfall**: Forgetting `.updateProjectionMatrix()` after changing frustum bounds. Without it, Three.js keeps using the old projection — shadows appear only in the initial area and don't update as you move.
 
-### 7. Billboarded Sprite Characters (Paper Mario / Void Bastards Style)
+### 8. Billboarded Sprite Characters (Paper Mario / Void Bastards Style)
 
 For 2D sprites that always face the camera in a 3D world, use `PlaneGeometry` — NOT `THREE.Sprite`:
 
@@ -371,7 +385,7 @@ const texture = new THREE.CanvasTexture(canvas);
 texture.needsUpdate = true;
 ```
 
-### 8. NPC Interaction System
+### 9. NPC Interaction System
 
 For billboarded NPCs (always facing camera), **use pure distance checks** — not dot product facing tests:
 
@@ -392,7 +406,7 @@ checkInteraction(playerPos) {
 
 **Pitfall:** Using dot product facing checks with billboarded sprites causes the interaction to only trigger when the player is at a specific angle relative to the camera — feels like you need to "walk past" the NPC. For billboards, distance-only is correct.
 
-### 9. Dialogue System with Camera Shifts and Pointer Lock
+### 10. Dialogue System with Camera Shifts and Pointer Lock
 
 When implementing dialogue that requires mouse clicks (choice buttons), **release pointer lock** during dialogue:
 
@@ -458,7 +472,7 @@ _typeText(text, onComplete) {
 }
 ```
 
-### 10. AABB Collision Resolution (No Physics Engine)
+### 11. AABB Collision Resolution (No Physics Engine)
 
 For simple games without Rapier, implement axis-separated penetration resolution:
 
@@ -582,6 +596,8 @@ effectiveAmplitude *= breathMeter / 100; // zero when depleted
 
 For multi-legged creatures, use **closed-form two-bone IK** (Law of Cosines) — not iterative FABRIK or CCD. No physics engine needed.
 
+> **Illustrative (pseudo-code):** the sketch below omits full variable definitions for brevity — `d` = clamped hip→target distance, `u` = upper segment length, `l` = lower segment length, and the vector arithmetic is abbreviated. For a complete, runnable solver (with proper `THREE.Vector3` math and clamping) see `references/procedural-ik-movement.md`.
+
 ```javascript
 function solveTwoBoneIK(hip, knee0, upperLen, lowerLen, target) {
     const toTarget = new THREE.Vector3().subVectors(target, hip).normalize();
@@ -633,7 +649,7 @@ See `references/collision-resolution.md` for AABB collision patterns, unified gr
 See `references/procedural-ik-movement.md` for full two-bone IK solver + gait system code (sniper project).
 See `references/top-down-camera-debug.md` for the parented-pivot camera failure log and the verified follow-camera pattern (fantasy roguelite build).
 
-### 7. Performance Optimization Checklist
+### 12. Performance Optimization Checklist
 
 - Use instanced meshes (`InstancedMesh`) for repeated geometry (hundreds+ copies)
 - Frustum culling is on by default — verify objects outside view aren't expensive to update
@@ -642,7 +658,7 @@ See `references/top-down-camera-debug.md` for the parented-pivot camera failure 
 - Profile with `import Stats from 'three/examples/jsm/libs/stats.module'`
 - Use DRACO compression for GLTF models (`GLTFLoader` + `DRACOLoader`)
 
-### 7. Mobile FOV Adjustment
+### 13. Mobile FOV Adjustment
 
 For scenes with multiple objects in a row (card spreads, menus, etc.), narrow screens crop edges. Fix by adjusting camera FOV based on viewport width:
 
@@ -667,7 +683,7 @@ window.addEventListener('resize', function() {
 
 Also tighten object spacing — reduce card/object width and gap multiplier for narrow viewports.
 
-### 8. Mobile Testing & Deployment
+### 14. Mobile Testing & Deployment
 
 When testing on mobile devices (phone/tablet), the Pi 5 LAN is your target:
 
@@ -691,7 +707,7 @@ When testing on mobile devices (phone/tablet), the Pi 5 LAN is your target:
 - **Verify visually** — use browser screenshot (browser_exec) to confirm the game renders before telling the user it's ready
 - **First-render checklist for new games**: (1) player spawn is NOT inside an obstacle — use a fixed safe zone (e.g. central plaza) for spawn rather than random-position rejection sampling; (2) ambient light ≥ 0.8 + hemisphere light, not one dim directional — dark screenshots are unreadable; (3) screenshot and inspect BEFORE reporting done — "canvas exists" and `game.state === 'playing'` do not mean the camera looks the right direction.
 
-### 8. Mobile Input Patterns
+### 15. Mobile Input Patterns
 
 For touch-first games, implement these patterns early:
 
@@ -760,8 +776,6 @@ document.body.style.touchAction = 'none';
 - **Pre-compute bounding boxes**: Create `Box3` objects for static obstacles ONCE at startup, not every frame. Rebuilding Box3s per-frame is expensive and unnecessary for static geometry.
 - **Wall sliding**: When collision blocks full movement, try X and Z axes independently so the player can slide along walls instead of hard-stopping.
 
-## Pitfalls
-
 - **CapsuleGeometry is r137+** — silently fails on older Three.js (r128). Use `CylinderGeometry(radius, radius, height, segments)` with `.translate()` instead. Always check the version before using newer geometries/materials.
 - **Movement direction**: Use `camera.getWorldDirection()` projected onto XZ plane for forward, then cross with up vector for right. Manual yaw-based trig (`sin/cos`) is fragile — sign errors cause W/S inversion and diagonal drift. Always pass the camera to player.update() so movement derives from actual view direction.
 - **Quaternion movement collapses diagonals** — applying a quaternion to WASD input vectors causes diagonal movement to collapse onto one axis and feel faster (Pythagorean error). Use `camera.getWorldDirection()` instead of any rotation-based approach.
@@ -774,7 +788,7 @@ document.body.style.touchAction = 'none';
 - **Three.js stats plugin path** — import from `'three/examples/jsm/libs/stats.module'`, not a separate npm package.
 - **ECS overkill for small games** — if you have fewer than ~20 objects, plain classes with inheritance are simpler and faster to write. ECS pays off at scale (50+ entities).
 - **Infinite world streaming is hard** — most tutorials stop at static scenes. SimonDev's course is the primary source covering smooth content streaming and GPU memory management for this.
-- **Vite + Three.js examples** — some Three.js addons use import paths like `'three/examples/jsm/...'`. These work with Vite via npm but require correct package resolution. Use `@import` or ensure they're installed from the `three` npm package itself.
+- **Vite + Three.js examples** — some Three.js addons use import paths like `'three/examples/jsm/...'`. These work with Vite via npm but require correct package resolution — make sure `three` is installed from npm and use standard ESM `import` statements (import maps or the bundler handle the resolution), not CSS-style `@import`.
 - **WebGL context loss on mobile** — set `renderer.xr.enabled = true` if targeting VR/mobile, and handle context lost events gracefully.
 - **FOV direction is counterintuitive** — wider FOV (higher number) = zoomed OUT = more fits in frame. Narrower FOV (lower number) = zoomed IN = tighter crop. Going from 50→40 makes things appear CLOSER, not further away. To fit more objects on mobile, increase the FOV number (e.g., 65 for phones).
 - **Vite `minify: 'terser'` fails out of the box** — since Vite v3, terser is an optional dependency. `npx vite build` errors with "terser not found" unless you `npm i -D terser` or drop the minify option. Default esbuild minification is fine for prototypes.

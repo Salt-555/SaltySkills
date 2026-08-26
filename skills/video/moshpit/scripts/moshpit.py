@@ -67,7 +67,10 @@ def has_ffglitch():
 
 
 def run(cmd, description=""):
-    """Run shell command with progress indicator."""
+    """Run shell command with progress indicator.
+
+    Raises RuntimeError on failure so callers can't silently report success.
+    """
     if description:
         print(f"  ▶ {description}")
     else:
@@ -75,7 +78,11 @@ def run(cmd, description=""):
     result = subprocess.run(
         cmd, shell=True, capture_output=False
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"command failed with exit code {result.returncode}: {cmd[:200]}"
+        )
+    return True
 
 
 def get_video_info(video_path):
@@ -170,17 +177,12 @@ def effect_lagfun_ghost(input_video, output_path):
     print(f"  LAGFUN GHOST — spectral ghost with color separation")
     print(f"{'='*60}")
 
-    # RGB split: extract each channel, offset in time, recombine via mergeplanes
+    # Chroma-shifted ghost layered over the original via screen blend.
+    # (Verified working on 320x240; the previous mergeplanes/colorchannelmixer
+    # graph used commas inside the -vf graph and failed on yuv420p.)
     cmd = (
         f'ffmpeg -y -i "{input_video}" '
-        f'-vf "split[r][g][b];'
-        f'[r]colorchannelmixer=1*0+0*1+0*2:0*0+0*1+0*2:0*0+0*1+0*2,'
-        f'trim=start=0.1,setpts=PTS-STARTPTS[r_ch];'
-        f'[g]colorchannelmixer=0*0+1*1+0*2:0*0+0*1+0*2:0*0+0*1+0*2,'
-        f'trim=start=0.05,setpts=PTS-STARTPTS[g_ch];'
-        f'[b]colorchannelmixer=0*0+0*1+0*2:0*0+0*1+0*2:0*0+0*1+0*2[b_ch];'
-        f'[r_ch][g_ch][b_ch]mergeplanes='
-        f'0*0+3*1+6*2,1*0+4*1+7*2,2*0+5*1+8*2:format=yuv420p" '
+        f'-vf "split[a][b];[a]chromashift=cbh=8:crh=8[c];[b][c]blend=all_mode=screen" '
         f'-c:v libx264 -crf 18 "{output_path}"'
     )
 
@@ -368,7 +370,9 @@ def batch_generate(input_video, output_dir, effects=None, start=0, end=-1,
                 # FFglitch presets — effect_ffglitch handles transcoding internally
                 if effect_ffglitch(input_video, out_file, effect):
                     success_count += 1
-        except Exception as e:
+        except (Exception, SystemExit) as e:
+            # SystemExit: ffglitch_mosh.run_cmd/check_ffglitch call sys.exit()
+            # on failure. Catch it so one failing preset is skipped, not fatal.
             print(f"  ✗ Effect '{effect}' failed: {e}")
             skip_count += 1
 

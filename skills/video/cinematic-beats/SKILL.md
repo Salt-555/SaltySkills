@@ -3,7 +3,8 @@ name: cinematic-beats
 description: Cinematic video style — short punchy TTS (one sentence max), visuals given full runtime to breathe, hard cuts, user-provided music with ducking during speech. Check-in gates after each production phase for user review before proceeding. Use when user requests this specific cinematic/punchy video style or says "cinematic beats."
 version: 1.0.0
 tags: [video, creative]
-related_skills: [manim-video, p5js, ascii-video, storyboard-planner]
+category: video
+related_skills: [manim-video, p5js, ascii-video]
 ---
 
 # Cinematic Beats Video Style
@@ -107,12 +108,14 @@ Generate all visual assets per their type. Save as `beats/beat-XX/visual.mp4`.
 1. Generate image via `image_generate`
 2. Apply VHS filter to the image (grain, scanlines, vignette, chromatic aberration):
 ```bash
-python3 /home/salt/.hermes/scripts/vhs_filter.py \
+python3 scripts/vhs-filter.py \
   --input beat-XX-image.png \
   --output beat-XX-vhs.png \
   --seed 42 \
   --intensity 1.0
 ```
+
+**Requirements:** `pip install numpy Pillow` (numpy for the array effects, Pillow for image I/O).
 
 Intensity levels: `0.7` (subtle — grain + vignette only), `1.0` (standard — all effects), `1.5` (heavy — strong chromatic aberration, visible scanlines). Default is `1.0`.
 
@@ -123,7 +126,7 @@ ffmpeg -loop 1 -i beat-XX-vhs.png -t 5 \
   -c:v libx264 -pix_fmt yuv420p -r 25 beats/beat-XX/visual.mp4
 ```
 
-**Why VHS first, then Ken Burns?** The zoompan filter would blur out the grain and scanlines. Apply VHS to the static image first, then add motion on top. The Ken Burns movement combined with per-frame jitter/tracking lines in video mode creates a lived-in analog feel — like watching old footage through a slightly degraded CRT.
+**Why VHS first, then Ken Burns?** The zoompan filter would blur out the grain and scanlines. Apply VHS to the static image first, then add motion on top. The Ken Burns movement on top of the VHS-filtered image creates a lived-in analog feel — like watching old footage through a slightly degraded CRT.
 
 ### Animated beats (p5js/manim/ascii)
 Load the relevant skill first, then generate. Save output as `beats/beat-XX/visual.mp4`.
@@ -139,20 +142,18 @@ ffmpeg -y -i raw-manim.mp4 \
 
 ### VHS Filter Reference
 
-The VHS filter (`/home/salt/.hermes/scripts/vhs_filter.py`) applies these per-frame effects:
+The VHS filter (`scripts/vhs-filter.py`) applies these effects to a single image:
 
 | Effect | What it does | Visual result |
 |--------|-------------|---------------|
 | Chromatic aberration | R/B channel offset (0-2px) | Color fringing on edges, like a misaligned CRT |
 | Analog noise | ±8 grain per channel (intensity-scaled) | Film-like texture in shadows and midtones |
-| Horizontal jitter | 1px shift on ~15% of frames | Subtle instability — tape not tracking perfectly |
-| Tracking lines | Brightness bands on ~4% of frames | Classic VHS horizontal glitch streaks |
 | Scanlines | Every 4th row darkened to 96% | CRT phosphor grid overlay |
 | CRT vignette | Edge darkening (15-35% based on intensity) | Rounded screen corners, like old TV |
 
 **For images:** All effects apply once with a single random seed. Chromatic aberration and noise are visible; jitter/tracking lines are subtle since there's only one frame.
 
-**For video:** Effects apply per-frame. Jitter creates real movement artifacts, tracking lines flash across randomly, chromatic aberration shifts between frames — this is where the VHS look becomes dramatic.
+**Note:** This filter is image-only — it does not process video input. To get motion, apply the filter to a static frame first, then add Ken Burns/zoompan on top.
 
 ## Phase 3.5: Visual Check-In Gate
 
@@ -212,11 +213,13 @@ rm temp-crushed.wav
 ```
 
 **B) Dynamic mix (signal degradation effect — preferred):**
-Uses Python script (`/home/salt/.hermes/audio_cache/vibey-mix.py`) with zero-order hold upsampling for authentic bitcrush at correct pitch.
+Uses Python script (`scripts/vibey-mix.py`) with zero-order hold upsampling for authentic bitcrush at correct pitch.
 
-**Locked parameters (max-crush variant):**
-- **Decimation:** 8× (drops every 8th sample, then repeats via zero-order hold)
-- **Quantization:** 5-bit baseline → 3-bit during dips
+**Requirements:** `pip install numpy pydub` (numpy for array processing, pydub for MP3 read/write).
+
+**Locked parameters (dec5-bit8 variant):**
+- **Decimation:** 5× (drops every 5th sample, then repeats via zero-order hold)
+- **Quantization:** 8-bit (constant)
 - **Dry/wet baseline:** 80% dry / 20% wet
 - **Dip pattern:** Every ~1.2s, dry drops to ~35%, wet rises to ~65% (duration ~0.25s)
 - **Tremolo on wet only:** 4Hz triangle wave, depth 70% (wet pulses between 30-100%)
@@ -227,7 +230,7 @@ python3 scripts/vibey-mix.py beats/beat-XX/audio.mp3
 cp beats/beat-XX/audio-dynamic.mp3 beats/beat-XX/audio-filtered.mp3
 ```
 
-**Chain breakdown:** Clean dry signal layered with extreme digital artifacts (8× decimation, 5-bit quantization via zero-order hold upsampling) with periodic dips revealing deeper crunch (3-bit), tremolo on wet signal for rhythmic pulsing, and slapback delay for space. Keep the chain structure intact — only adjust individual parameters if needed.
+**Chain breakdown:** Clean dry signal layered with extreme digital artifacts (5× decimation, 8-bit quantization via zero-order hold upsampling), periodic dips raising the wet level for a "degrading transmission" effect, tremolo on wet signal for rhythmic pulsing, and slapback delay for space. Keep the chain structure intact — only adjust individual parameters if needed.
 
 Use `audio-filtered.mp3` in all subsequent phases. Keep original `audio.mp3` for reference.
 
@@ -290,7 +293,7 @@ ffmpeg -f lavfi -i color=c=black:s=1920x1080:d=6:r=25 \
 Add subtle scanline overlay for CRT feel:
 ```bash
 ffmpeg -i beats/beat-XX/visual.mp4 \
-  -vf "zscale=t=linear:r=470bg,format=yuva420p,geq='X/W*10>Hmod(X,2)*3:luma(X,Y)':a=-10,zscale=t=709" \
+  -vf "geq=lum='lum(X,Y)*(1-0.15*mod(Y,2))'" \
   -c:v libx264 -pix_fmt yuv420p -r 25 beats/beat-XX/visual.mp4
 ```
 
@@ -306,7 +309,7 @@ Use ffmpeg's `sidechaincompress` filter — music is the main signal, voice is t
 ```bash
 ffmpeg -i output/beat-XX-composed.mp4 \
   -stream_loop -1 -i music/background.mp3 \
-  -filter_complex "[1:a][0:a]sidechaincompress=threshold=0.02:ratio=4:attack=50:release=200:makeup=1.5[ducked_music];[0:a][ducked_music]amix=inputs=2:duration=first:weights='1 0'[mixed]" \
+  -filter_complex "[1:a][0:a]sidechaincompress=threshold=0.02:ratio=4:attack=50:release=200:makeup=1.5[ducked_music];[0:a][ducked_music]amix=inputs=2:duration=first:weights='1 1'[mixed]" \
   -map 0:v -map "[mixed]" \
   -c:v libx264 -pix_fmt yuv420p -t $BEAT_DUR -r 25 output/beat-XX-with-music.mp4
 ```
@@ -392,7 +395,7 @@ This file is the single source of truth for returning to the project later.
 - **Audio filter is mandatory.** Apply dry/wet bitcrush chain to every TTS clip. Two approaches: static (ffmpeg aresample roundtrip, 70/30) or dynamic (Python zero-order hold with periodic dips revealing more crunch — preferred). Consistent voice across all beats — don't mix filtered and unfiltered voices in one video. See `references/dry-wet-bitcrush.md` for full technique.
 - **VHS filter on all image beats.** Every generated image gets VHS post-processing before Ken Burns motion: grain, scanlines, vignette, chromatic aberration. This is the default visual texture — no exceptions. Use `python3 scripts/vhs-filter.py --input IMG.png --output OUT.png --seed 42 --intensity 1.0`. Intensity 0.7 = subtle, 1.0 = standard, 1.5 = heavy.
 - **VHS first, then Ken Burns.** Apply VHS filter to the static image BEFORE zoompan motion. The zoompan blur would destroy grain and scanlines. Motion on top of VHS-filtered images creates lived-in analog feel — like watching old footage through a degraded CRT.
-- **Animated beats get VHS too (optional).** p5js/manim/ascii outputs can optionally pass through `scripts/vhs-filter.py` for consistency: `python3 scripts/vhs-filter.py --input raw.mp4 --output vhs.mp4 --seed 42`. The per-frame effects (jitter, tracking lines) are most dramatic on video.
+- **VHS filter is image-only.** `scripts/vhs-filter.py` processes a single image frame. For animated beats, keep the p5js/manim/ascii output as-is (or render a still frame for VHS treatment).
 - **MP3 only for audio.** Never use OGG — codec compatibility issues with Telegram delivery and ffmpeg concat operations. TTS output, filters, and music tracks all MP3.
 
 ## Pi 5 Notes

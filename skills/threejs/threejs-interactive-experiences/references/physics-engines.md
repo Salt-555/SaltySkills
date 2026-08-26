@@ -17,51 +17,71 @@
 import * as RAPIER from '@dimforge/rapier3d-compat';
 
 // Initialize physics world (async — WASM loads)
-const { World, RigidBodyBuilder, ColliderBuilder } = await RAPIER.init();
+await RAPIER.init();
 
-const physicsWorld = new World(new Float32Array([0, 0, -9.81]));
+const physicsWorld = new RAPIER.World({ x: 0, y: 0, z: -9.81 });
 
-// Create character as kinematic position-based body
-const characterBody = RigidBodyBuilder.kinematicPositionBased()
-  .translated(0, 2, 0)
-  .built(physicsWorld);
+// Create character as kinematic-position-based body
+const characterBody = physicsWorld.createRigidBody(
+  RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(0, 2, 0)
+);
 
 // Add capsule collider for collision detection
-ColliderBuilder.capsule(0.5, 1.0)
-  .setRestitution(0.0)
-  .linkedTo(characterBody)
-  .built(physicsWorld);
+const characterCollider = physicsWorld.createCollider(
+  RAPIER.ColliderDesc.capsule(0.5, 1.0).setRestitution(0.0),
+  characterBody
+);
 
-// Ground plane
-const groundBody = RigidBodyBuilder.fixed()
-  .built(physicsWorld);
+// Ground plane (static body + cuboid collider)
+const groundBody = physicsWorld.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+physicsWorld.createCollider(
+  RAPIER.ColliderDesc.cuboid(50.0, 0.5, 50.0).setTranslation(0, -0.5, 0), // finite half-extents
+  groundBody
+);
 
-ColliderBuilder.cuboid Infinity, 0.5, Infinity) // half-extents
-  .translated(0, -0.5, 0)
-  .linkedTo(groundBody)
-  .built(physicsWorld);
-
-// In game loop:
-physicsWorld.step(dt);
+// In game loop: step() takes an optional EventQueue, not a timestep number.
+// The fixed timestep is world.timestep (default 1/60).
+physicsWorld.step();
 
 // Sync Three.js mesh to physics body
 const pos = characterBody.translation();
 mesh.position.set(pos.x, pos.y, pos.z);
 ```
 
-### Character Movement Pattern
+### Character Movement Pattern (KinematicCharacterController)
+
+For a kinematic-position body, `setLinvel` has no effect — you must drive movement through the character controller's `setNextKinematicTranslation`.
+
 ```javascript
-// Apply linear velocity for WASD movement
+// Create a kinematic character controller (handles stairs, slopes, ground snapping)
+const kcc = physicsWorld.createCharacterController(0.01);
+kcc.setUp({ x: 0, y: 1, z: 0 });              // world "up"
+kcc.enableAutostep(0.2, 0.1, true);           // step over small obstacles
+kcc.enableSnapToGround(0.2);                  // snap to the ground while walking
+kcc.setSlopeClimbAngle(45 * Math.PI / 180);   // max walkable slope
+
+// Each frame (after world.step()), build a desired movement delta:
 const direction = new THREE.Vector3(input.x, 0, input.z);
 direction.applyQuaternion(cameraQuaternion); // relative to camera
 direction.normalize().multiplyScalar(moveSpeed);
 
-characterBody.setLinvel({ x: direction.x, y: currentVel.y, z: direction.z }, true);
-
-// Jump
-if (isGrounded && jumpPressed) {
-  characterBody.setLinvel({ x: currentVel.x, y: jumpVelocity, z: currentVel.z }, true);
+const moveVec = new RAPIER.Vector3(direction.x, 0, direction.z);
+if (!isGrounded) {
+  moveVec.y = currentVel.y;        // carry vertical velocity
+} else if (jumpPressed) {
+  moveVec.y = jumpVelocity;        // jump impulse
 }
+
+// Resolve the controller's movement against colliders, then apply the
+// collision-clamped delta to the kinematic body.
+kcc.computeColliderMovement(characterCollider, moveVec);
+const effective = kcc.computedMovement();
+const nextPos = characterBody.translation();
+characterBody.setNextKinematicTranslation({
+  x: nextPos.x + effective.x,
+  y: nextPos.y + effective.y,
+  z: nextPos.z + effective.z,
+});
 ```
 
 ---

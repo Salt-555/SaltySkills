@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""VHS/analog filter for images and video frames.
+"""VHS/analog filter for images.
 
 Adapted from deep-fry's vhs_polisher.py into a standalone, reusable tool.
-Supports single-image processing and full-video frame-by-frame processing.
+Supports single-image processing (grain/scanlines/vignette/chromatic aberration).
 
 Usage:
-  # Image (single frame) — grain/scanlines/vignette/chromatic aberration only
   python3 scripts/vhs-filter.py --input IMG.png --output OUT.png --seed 42 --intensity 1.0
 
-  # Video (frame-by-frame) — adds jitter, tracking lines, per-frame artifacts
-  python3 scripts/vhs-filter.py --input raw.mp4 --output vhs.mp4 --seed 42
+Note: This tool is image-only. It does NOT process video (MP4/AVI/MOV) input —
+feed it a single static frame, then apply motion (e.g. Ken Burns zoompan) on top.
 
 Intensity levels:
   0.7 = subtle (grain + vignette, good for clean shots)
@@ -22,8 +21,6 @@ Motion on top of VHS-filtered frames creates lived-in analog feel.
 Effects applied:
   - Chromatic aberration (RGB channel offset)
   - Analog noise (per-pixel random variation)
-  - Horizontal jitter (frame-level shift, video only)
-  - Tracking lines (horizontal glitch bands, video only)
   - Scanlines (alternating dark/bright horizontal lines)
   - CRT vignette (darkened corners with slight curvature)
 
@@ -35,8 +32,8 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 
-def apply_vhs(image_path: str, output_path: str, seed: int = 42, intensity: float = 1.0, is_video: bool = False):
-    """Apply VHS/analog filter to an image or video frame sequence."""
+def apply_vhs(image_path: str, output_path: str, seed: int = 42, intensity: float = 1.0):
+    """Apply VHS/analog filter to an image."""
     rng = np.random.RandomState(seed)
 
     img = Image.open(image_path).convert("RGB")
@@ -58,7 +55,10 @@ def apply_vhs(image_path: str, output_path: str, seed: int = 42, intensity: floa
     arr = np.clip(arr + noise, 0, 1)
 
     # --- Scanlines ---
-    scanline_pattern = np.tile(np.array([0.92, 1.0]), (h // 2 + 1, w))[:h, :w]
+    # Alternate every row between 0.92 and 1.0 brightness. Build the full-height
+    # row pattern first, then tile across columns so it broadcasts against (h, w, 3).
+    row_pattern = np.tile(np.array([0.92, 1.0]), (h + 1) // 2)[:h]  # (h,)
+    scanline_pattern = np.tile(row_pattern[:, None], (1, w))        # (h, w)
     arr[:, :, :] *= scanline_pattern[:, :, np.newaxis]
 
     # --- CRT vignette ---
@@ -68,36 +68,20 @@ def apply_vhs(image_path: str, output_path: str, seed: int = 42, intensity: floa
     vignette = 1.0 - 0.5 * (dist / np.max(dist)) ** 2
     arr[:, :, :] *= vignette[:, :, np.newaxis]
 
-    # --- Video-only effects ---
-    if is_video:
-        # Horizontal jitter per-frame (random shift)
-        jitter_amount = int(3 * intensity)
-        for ch in range(3):
-            shift = rng.randint(-jitter_amount, jitter_amount + 1)
-            arr[:, :, ch] = np.roll(arr[:, :, ch], shift, axis=1)
-
-        # Tracking lines (random horizontal glitch bands)
-        num_tracks = max(1, int(rng.uniform(0, 2 * intensity)))
-        for _ in range(num_tracks):
-            y_start = rng.randint(0, h)
-            track_height = rng.randint(2, 15)
-            arr[y_start:y_start + track_height, :, :] += rng.uniform(-0.15, 0.15, (track_height, w, 3)) * intensity
-
     # Clamp and convert back
     result = np.clip(arr * 255, 0, 255).astype(np.uint8)
     Image.fromarray(result).save(output_path)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VHS/analog filter for images and video")
-    parser.add_argument("--input", required=True, help="Input image or video path")
-    parser.add_argument("--output", required=True, help="Output file path")
+    parser = argparse.ArgumentParser(description="VHS/analog filter for images")
+    parser.add_argument("--input", required=True, help="Input image path")
+    parser.add_argument("--output", required=True, help="Output image path")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--intensity", type=float, default=1.0, choices=[0.7, 1.0, 1.5], help="Effect intensity")
     args = parser.parse_args()
 
-    is_video = args.input.endswith((".mp4", ".avi", ".mov"))
-    apply_vhs(args.input, args.output, seed=args.seed, intensity=args.intensity, is_video=is_video)
+    apply_vhs(args.input, args.output, seed=args.seed, intensity=args.intensity)
 
 
 if __name__ == "__main__":

@@ -39,7 +39,11 @@ def main():
     vs = [s for s in info["streams"] if s["codec_type"] == "video"][0]
     vw, vh = int(vs["width"]), int(vs["height"])
     fps_s = vs["r_frame_rate"]
-    fps = eval(fps_s) if "/" in fps_s else float(fps_s)
+    if "/" in fps_s:
+        num, _, den = fps_s.partition("/")
+        fps = float(num) / float(den)
+    else:
+        fps = float(fps_s)
 
     r2 = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",

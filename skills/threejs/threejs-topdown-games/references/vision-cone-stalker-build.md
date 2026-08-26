@@ -80,7 +80,10 @@ pure-logic core. 136 vitest tests, both worlds headless-verified, committed.
    ready predicate per game (drop game-specific elements like #hud-round).
 4. **Capture must serve the vite PRODUCTION build (dist/)** — bare `three`
    specifiers fail from raw src. `vite build --logLevel error && node
-   scripts/capture.mjs dist ../shots/x.png`. Resolve ROOT before the serveFile
+   scripts/capture.mjs dist ../shots/x.png`. (Note: `capture.mjs` is a
+   **per-project artifact** from the original game project, not shipped with
+   this skill — write your own capture probe from this guidance.) Resolve ROOT
+   before the serveFile
    path guard (relative '.' → every request 403 →
    `ERR_HTTP_RESPONSE_CODE_FAILURE` on page.goto). `vite build --minify false`
    for readable pageerror stacks.

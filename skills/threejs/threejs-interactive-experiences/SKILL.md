@@ -7,7 +7,7 @@ license: MIT
 metadata:
   hermes:
     tags: [threejs, webgl, three-dimensional, character-controller, interactive, storefront, browser-game]
-    related_skills: [phaser-3, popular-web-designs, sketch]
+    related_skills: [popular-web-designs, sketch]
 ---
 
 # Three.js Interactive Experiences
@@ -25,6 +25,9 @@ This skill covers building **interactive 3D experiences** where users navigate a
 - Creating an interactive product configurator with spatial navigation
 - Any "walk around and interact" experience that runs in-browser
 - Third-person or first-person character controllers
+
+## Not For
+
 - **Non-interactive 3D renders** — rotating logos, product shots, brand animations exported as video (use Three.js + `MediaRecorder` for HTML-based capture, or fall back to Manim CE when the agent needs to deliver a file directly)
 
 ## Video Delivery Pitfalls
@@ -258,14 +261,14 @@ Use r128 (stable, well-tested) rather than bleeding-edge versions. If you need a
 
 ### BoxGeometry Material Face Ordering
 
-Three.js `BoxGeometry` materials are ordered: `[+x right, -x left, +y top, -y bottom, +z front, -z back]`. The camera at positive Z looking toward origin sees the **+Z face** (index 4). For cards where you want the BACK facing the camera initially and the FRONT revealed after a Y-axis flip:
+Three.js `BoxGeometry` materials are ordered `[+x right, -x left, +y top, -y bottom, +z front, -z back]`, so index 4 is the **+Z front** face and index 5 is the **-Z back** face. With the camera at positive Z looking toward origin, the **+Z face (index 4)** is the side visible on screen. For cards that rest with the back artwork facing the camera and the front artwork hidden until flipped:
 
 ```javascript
-// materials[4] = back design (facing camera), materials[5] = front design (hidden)
+// index 4 (+Z, camera-facing) = back artwork; index 5 (-Z, hidden) = front artwork
 var materials = [edgeMat, edgeMat, edgeMat, edgeMat, backMat, frontMat];
 ```
 
-A 180° Y rotation (`rotation.y = Math.PI`) swaps which face is visible.
+A 180° Y rotation (`rotation.y = Math.PI`) swings the hidden -Z face around to face the camera.
 
 ### Canvas Texture Generation for Cards
 
