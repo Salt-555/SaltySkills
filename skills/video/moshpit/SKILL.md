@@ -1,7 +1,7 @@
 ---
 name: moshpit
-description: Use when user wants to datamosh, glitch, or corrupt video footage artistically. A video datamoshing and glitch effects pipeline that produces multiple glitched variations via I-frame removal, P-frame duplication, FFglitch motion vectors, and FFmpeg lagfun trails.
-category: video
+description: Datamoshing and video glitch effects pipeline. Takes a video, produces multiple glitched variations via I-frame removal, P-frame duplication, FFglitch motion vectors, and FFmpeg lagfun trails. Use when user wants to datamosh, glitch, or corrupt video footage artistically.
+category: creative
 ---
 
 # Moshpit — Video Datamoshing Pipeline
@@ -14,14 +14,14 @@ Glitch art tool that takes a source video and produces multiple corrupted/glitch
 - **FFglitch 0.10.2** (`ffedit`, `ffgac`, `qjs`) — installed at `/usr/local/bin/`
 - **Python 3 + numpy** — system packages (numpy 2.4.3)
 
-Install FFglitch if missing (x86_64 build — this box is NOT aarch64):
+Install FFglitch if missing (x86_64 build — this machine is x86_64, NOT aarch64):
 ```bash
 curl -L -o /tmp/ffglitch.7z "https://ffglitch.org/pub/bin/linux64/ffglitch-0.10.2-linux-x86_64.7z"
 cd /tmp && 7z x ffglitch.7z   # needs p7zip/7zip: sudo pacman -S 7zip
 sudo cp ffglitch-0.10.2-linux-x86_64/ffedit ffglitch-0.10.2-linux-x86_64/ffgac \
         ffglitch-0.10.2-linux-x86_64/qjs ffglitch-0.10.2-linux-x86_64/fflive /usr/local/bin/
 ```
-`ffedit`/`ffgac` are pure `shutil.which()` PATH lookups — `/usr/local/bin` suffices; no per-script path config.
+> **Architecture note (Salt's box):** this machine is x86_64. The binaries in the README's original `linux-aarch64` block will NOT run here — use `linux64/` → `ffglitch-0.10.2-linux-x86_64.7z` from `https://ffglitch.org/pub/bin/linux64/`. Both `ffedit` and `ffgac` are pure `shutil.which()` PATH lookups, so `/usr/local/bin` is all they need; no per-script path config.
 
 ## Scripts
 
@@ -35,6 +35,9 @@ All scripts live in `scripts/` relative to this skill:
 | `dual_layer.py` | Two-video reveal: FFglitch-corrupts foreground into a mask that exposes clean background | Yes |
 | `pixelsort_mosh.py` | Per-frame pixelsort pass (luma or green-hue sort); chains after any datamosh | No |
 | `transition_mosh.py` | A→B codec-level transition: datamosh A to collapse, melt into B | No |
+| `cut_mosh.py` | Deliberate moshing: cut-targeted melts + rhythmic bloom bursts (Watch Dogs style) | No |
+| `dither_mosh.py` | Chainable Bayer ordered-dither pass (RetroDither-style WD texture) | No |
+| `salt_transition.py` | **THE "Salt Transition"** — full locked pipeline: melts + frozen seams + 50% pixelsort overlay + static whisper-dither | No |
 
 ## Quick Start
 
@@ -96,6 +99,101 @@ python scripts/pixelsort_mosh.py transition.mp4 -o out.mp4 --unsort-start 170 --
 Sort keys (`--key`): `luma` (brightness, default) or `green` (greenness = G − max(R,B), selects neon-green/teal subjects). Frame-range controls: `--until-frame N` (sort only the first N frames, rest clean) and `--unsort-start N --unsort-frames M` (progressive unsort).
 
 ## Named Setups
+
+### THE "SALT TRANSITION" (hand-tuned, Salt-verified — the locked recipe)
+
+The flagship deliberate-mosh pipeline, iterated on real footage (wishgranter)
+and locked. One command runs the whole chain:
+
+```bash
+python scripts/salt_transition.py input.mp4 -o salt.mp4
+```
+
+The four stages (each hand-verified; do NOT "improve" the defaults — they
+were tuned by eye across 7+ iterations, including rejected variants):
+
+1. **Cut melts + frozen seam holds** (`cut_mosh.py --auto-cuts`): long smears
+   at every detected cut; the outgoing shot's last smear freezes for 0.5s and
+   the next shot melts in over that frozen base.
+2. **Pixelsort** (`pixelsort_mosh.py --axis rows --mode interval --low 50`):
+   luma sort on the moshed output.
+3. **50% composite** (`ffmpeg blend=all_opacity=0.5`): the UNSORTED mosh
+   overlayed ON TOP of the sorted one. The streaks become a translucent
+   ghost texture instead of dominating — this is the trick that makes it.
+4. **Static whisper-dither** (`dither_mosh.py --levels 12 --contrast 1.0
+   --boil 0`): barely-visible locked Bayer crosshatch. Static is critical —
+   animated/boil dither flashes (rejected).
+
+Tuning dials (rarely needed): `--opacity` (sorted-layer weight, default 0.5),
+`--dither-levels` (lower = more visible dither, default 12),
+`--scene` (cut sensitivity), `--freeze` (seam hold length).
+
+### WATCH DOGS MENU STYLE (deliberate moshing — transitions + punctuation + texture)
+
+This is how Ubisoft's Watch Dogs menus work: not full-video collapse, but
+corruption used *deliberately* — melts at cut points as transitions, short
+bloom bursts as rhythmic punctuation, dithering as the unifying texture.
+(Verified via aescripts: WD2 used AE Pixel Sorter, RetroDither, and Data
+Glitch on trailers and in-game UI; the menu backgrounds are pre-rendered
+video authored with these treatments.)
+
+Three independent passes, any combination:
+
+**1. Cut-targeted melts — `cut_mosh.py --auto-cuts`.** Scene detection finds
+every shot boundary; the I-frame sitting on each cut is deleted, so each shot
+melts in from the previous shot's pixels. DEFAULT = LONG SMEARS: `--gop 9999`
+means I-frames exist only at detected cuts, so each melt fills the whole next
+shot (no per-second anchors). Pass `--gop 48` for shorter, snappier melts.
+
+**`--freeze N` (default 12) — Watch Dogs seam overlap.** At each cut, the
+last smeared P-frame of the outgoing shot is duplicated N times (a frozen
+hold), and the incoming shot then melts in AGAINST that frozen base — the
+new shot smears over a still image of the old shot's final smear state,
+rather than over live motion. This is the WD "freeze the last frame of one
+smeared video, use it as the base for the next smear" look. 0 = off.
+
+```bash
+# Long smears at every detected cut + frozen seam holds (the default look):
+python scripts/cut_mosh.py input.mp4 --auto-cuts --scene 0.3 -f 24 -o out.mp4
+```
+
+Input options: give it ONE video with existing cuts (`--auto-cuts` finds
+them), OR concatenate A+B first (`ffmpeg concat`) for melts at the junctions.
+For a single heavy A→B collapse-and-melt instead of a melt at every cut, use
+`transition_mosh.py`.
+
+**2. Rhythmic bloom bursts — `cut_mosh.py --bursts "frame:delta[:len],..."`.**
+Short bounded P-frame duplication inside otherwise clean footage. Bursts end
+early if they hit an I-frame (clean exit), so they never collapse the video.
+
+```bash
+# Bursts only (clean plate, punctuation hits):
+python scripts/cut_mosh.py input.mp4 --bursts "96:8,240:6" -o out.mp4
+
+# Melts AND bursts together (defaults: long smears + 0.5s frozen seam holds):
+python scripts/cut_mosh.py input.mp4 --auto-cuts --bursts "96:8:24" -o out.mp4
+```
+
+**3. Dither texture — `dither_mosh.py`** (chains after ANY datamosh, like
+pixelsort). Ordered Bayer dither = the crosshatch texture. Note: Salt judged
+the dither pass "cheezy" for the WD look — the WD menu does NOT use visible
+Bayer dithering; if a texture pass is wanted at all it should be very light
+(levels 8+, barely visible). Kept in the skill as an optional creative pass,
+NOT part of the default WD recipe.
+
+```bash
+# Optional, non-default:
+python scripts/dither_mosh.py out.mp4 -o final.mp4 --levels 8 --contrast 1.2 --boil 4
+# Limit dithering to A's half of a transition (B arrives clean):
+python scripts/dither_mosh.py transition.mp4 -o final.mp4 --until-frame <splice>
+```
+
+**The default WD look (verified by Salt):** `cut_mosh.py --auto-cuts` alone —
+long smears + frozen seam overlaps. No dither, no pixelsort, no
+clear-transition effects. Iterated past this (anchor bursts, clear ramps,
+ghost-plate dissolves) and rolled back: bitstream I-frame clears are
+inherently abrupt; pixel-space dissolve passes over-engineer the fix and
+read as cheezy. The abrupt clear is part of the aesthetic.
 
 ### PERSISTENT MOSH + PIXELSORT (the "clean throughout" setup)
 
@@ -179,14 +277,13 @@ python scripts/ffglitch_mosh.py input.mp4 --script my_filter.js -o output.mpg
 python scripts/ffglitch_mosh.py source.mp4 --extract vectors.dat
 python scripts/ffglitch_mosh.py target.mp4 --transfer vectors.dat -o result.mpg --mp4
 ```
-> **`--transfer` limitation:** ffedit 0.10.2 segfaults (exit 139) when transferring vectors to a *different* video. Only **self-apply** works — pass the SAME source video to `--transfer` that the vectors were extracted from.
 
 ## Workflow for Agent Use
 
 When the user provides a video and asks for datamoshing/glitch effects:
 
 1. **Verify input exists** — check file path, get duration/resolution via ffprobe
-2. **Choose effects** based on user request, or default to `melt bloom lagfun_trail chaos wave` — a fast, lightweight subset. (Note: this differs from the script's `all` default, which runs the full 17-effect set. Use the subset for speed or run `--effects all` for everything.)
+2. **Choose effects** based on user request, or default to `melt bloom lagfun_trail chaos wave`
 3. **Run moshpit.py** with the selected effects and output directory
 4. **Report results** — list generated files with sizes
 
