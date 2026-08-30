@@ -12,7 +12,7 @@ Glitch art tool that takes a source video and produces multiple corrupted/glitch
 
 - **FFmpeg** (system) — installed at `/usr/bin/ffmpeg` (n9.0.1 on this box)
 - **FFglitch 0.10.2** (`ffedit`, `ffgac`, `qjs`) — installed at `/usr/local/bin/`
-- **Python 3 + numpy** — system packages (numpy 2.4.3)
+- **Python 3 + numpy** — system packages
 
 Install FFglitch if missing (x86_64 build — this machine is x86_64, NOT aarch64):
 ```bash
@@ -21,7 +21,7 @@ cd /tmp && 7z x ffglitch.7z   # needs p7zip/7zip: sudo pacman -S 7zip
 sudo cp ffglitch-0.10.2-linux-x86_64/ffedit ffglitch-0.10.2-linux-x86_64/ffgac \
         ffglitch-0.10.2-linux-x86_64/qjs ffglitch-0.10.2-linux-x86_64/fflive /usr/local/bin/
 ```
-> **Architecture note (Salt's box):** this machine is x86_64. The binaries in the README's original `linux-aarch64` block will NOT run here — use `linux64/` → `ffglitch-0.10.2-linux-x86_64.7z` from `https://ffglitch.org/pub/bin/linux64/`. Both `ffedit` and `ffgac` are pure `shutil.which()` PATH lookups, so `/usr/local/bin` is all they need; no per-script path config.
+Both `ffedit` and `ffgac` are pure `shutil.which()` PATH lookups, so `/usr/local/bin` is all they need; no per-script path config.
 
 ## Scripts
 
@@ -29,28 +29,45 @@ All scripts live in `scripts/` relative to this skill:
 
 | Script | Purpose | Requires FFglitch? |
 |--------|---------|-------------------|
-| `moshpit.py` | Main orchestrator — batch-generate all variants | Partial (only for vector effects) |
+| `es_mosh.py` | **Core surgery engine** — raw MPEG-4 elementary-stream melts/bursts/freeze-seams with built-in validation. Use this for cut-targeted work | No |
+| `moshpit.py` | Batch orchestrator — generate many variants from one input | Partial (only for vector effects) |
 | `mosh.py` | Pure FFmpeg I-frame removal + P-frame duplication | No |
 | `ffglitch_mosh.py` | Motion vector manipulation via ffedit/ffgac | Yes |
 | `dual_layer.py` | Two-video reveal: FFglitch-corrupts foreground into a mask that exposes clean background | Yes |
 | `pixelsort_mosh.py` | Per-frame pixelsort pass (luma or green-hue sort); chains after any datamosh | No |
-| `transition_mosh.py` | A→B codec-level transition: datamosh A to collapse, melt into B | No |
-| `cut_mosh.py` | Deliberate moshing: cut-targeted melts + rhythmic bloom bursts (Watch Dogs style) | No |
-| `dither_mosh.py` | Chainable Bayer ordered-dither pass (RetroDither-style WD texture) | No |
+| `transition_mosh.py` | LEGACY — A→B codec-level transition: datamosh A to collapse, melt into B | No |
+| `cut_mosh.py` | LEGACY — cut-targeted melts + rhythmic bloom bursts (Watch Dogs style). Use es_mosh.py for new work | No |
+| `dither_mosh.py` | Chainable Bayer ordered-dither pass (Watch Dogs texture) | No |
+| `ca_swell.py` | Chainable chromatic-aberration pass with organic swell/recede dynamics | No |
+| `flicker_sort.py` | Pixel-sort flicker: random bursts (1 frame to 1s+) of full-density sorting on an otherwise clean video | No |
 | `salt_transition.py` | **THE "Salt Transition"** — full locked pipeline: melts + frozen seams + 50% pixelsort overlay + static whisper-dither | No |
 
-## Quick Start
+## Core workflow: cut-targeted melts (es_mosh.py)
+
+The centerpiece operation: melt every shot boundary of a concatenated video at
+frame-exact positions, with a frozen seam hold between shots. Works on ANY
+multi-shot video where you know (or can detect) the cut frames.
 
 ```bash
-# Generate ALL variants from a video:
-python scripts/moshpit.py input.mp4
+# Melt at specific frames (at --fps), 0.5s freeze hold per seam:
+python scripts/es_mosh.py concat.mp4 --cuts "48,172,292" --freeze 12 -f 24 -o melted.mp4
 
-# Specific effects only:
-python scripts/moshpit.py input.mp4 --effects melt bloom chaos wave
+# Add bloom bursts (frame:delta:length) — corruption punctuating clean footage:
+python scripts/es_mosh.py concat.mp4 --cuts "48,172" --bursts "100:8:24,180:10:36" -o out.mp4
 
-# Custom output directory + frame range for melt/bloom:
-python scripts/moshpit.py input.mp4 -o ./glitched/ --start 20 --end 80
+# Bursts only, no melts:
+python scripts/es_mosh.py input.mp4 --bursts "96:8" -o out.mp4
 ```
+
+Key mechanics:
+- **Cut frames are the first frame of the incoming shot.** The I-frame sits ON the cut; dropping it makes the incoming shot decode against the outgoing shot's pixels.
+- **`--freeze N`** duplicates the outgoing shot's last P-frame N times before the melt (Watch Dogs seam hold). 0 = off. 12 @ 24fps = 0.5s.
+- **Bursts strengthen weak seams**: if a seam barely smears (outgoing shot too static/motionless), a bloom burst on its tail or the incoming shot's head builds corruption for the melt to smear. Static footage (slow pans, stills) melts weakly — motion is the fuel.
+- **Validation is built in**: after remux it decodes the output and checks exact frame count vs expected. Trust the validation output, not exit codes.
+
+Building the concat input: normalize all shots first (`scale=W:H`, `fps=N`, `setsar=1`), then `concat` filter. Any resolution/fps mismatch breaks the melt math.
+
+For images-as-shots: hold a PNG with `-loop 1 -t <seconds>` as an input to the concat. A still shot melts weakly (no motion) — expect subtle smears at its seams.
 
 ## Effects Reference
 
@@ -98,156 +115,54 @@ python scripts/pixelsort_mosh.py transition.mp4 -o out.mp4 --unsort-start 170 --
 
 Sort keys (`--key`): `luma` (brightness, default) or `green` (greenness = G − max(R,B), selects neon-green/teal subjects). Frame-range controls: `--until-frame N` (sort only the first N frames, rest clean) and `--unsort-start N --unsort-frames M` (progressive unsort).
 
-## Named Setups
+### Dither pass (chains after any datamosh)
 
-### THE "SALT TRANSITION" (hand-tuned, Salt-verified — the locked recipe)
-
-The flagship deliberate-mosh pipeline, iterated on real footage (wishgranter)
-and locked. One command runs the whole chain:
+`dither_mosh.py` — Bayer ordered dither, the Watch Dogs crosshatch texture. Static by default; `--boil N` re-randomizes the threshold every N frames for an animated pattern (boiled dither reads "cheezy" — static is the default for a reason).
 
 ```bash
-python scripts/salt_transition.py input.mp4 -o salt.mp4
+# Heavy but stable (verified look):
+python scripts/dither_mosh.py moshed.mp4 -o out.mp4 --levels 5 --cell 8 --contrast 1.6
+# Subtler:
+python scripts/dither_mosh.py moshed.mp4 -o out.mp4 --levels 6 --cell 8 --contrast 1.4
+# Hard 1-bit graphic:
+python scripts/dither_mosh.py moshed.mp4 -o out.mp4 --levels 2 --mono
+# Limit to A's half of a transition:
+python scripts/dither_mosh.py transition.mp4 -o out.mp4 --until-frame <splice>
 ```
 
-The four stages (each hand-verified; do NOT "improve" the defaults — they
-were tuned by eye across 7+ iterations, including rejected variants):
+`--levels` (2-8, lower = heavier posterize), `--cell` (2/4/8/16 Bayer size), `--contrast` (pre-quantize luma crush, 1.4-1.6 = graphic), `--mono`, `--boil` (0 = static).
 
-1. **Cut melts + frozen seam holds** (`cut_mosh.py --auto-cuts`): long smears
-   at every detected cut; the outgoing shot's last smear freezes for 0.5s and
-   the next shot melts in over that frozen base.
-2. **Pixelsort** (`pixelsort_mosh.py --axis rows --mode interval --low 50`):
-   luma sort on the moshed output.
-3. **50% composite** (`ffmpeg blend=all_opacity=0.5`): the UNSORTED mosh
-   overlayed ON TOP of the sorted one. The streaks become a translucent
-   ghost texture instead of dominating — this is the trick that makes it.
-4. **Static whisper-dither** (`dither_mosh.py --levels 12 --contrast 1.0
-   --boil 0`): barely-visible locked Bayer crosshatch. Static is critical —
-   animated/boil dither flashes (rejected).
+### Chromatic aberration swell pass (chains after anything)
 
-Tuning dials (rarely needed): `--opacity` (sorted-layer weight, default 0.5),
-`--dither-levels` (lower = more visible dither, default 12),
-`--scene` (cut sensitivity), `--freeze` (seam hold length).
-
-### WATCH DOGS MENU STYLE (deliberate moshing — transitions + punctuation + texture)
-
-This is how Ubisoft's Watch Dogs menus work: not full-video collapse, but
-corruption used *deliberately* — melts at cut points as transitions, short
-bloom bursts as rhythmic punctuation, dithering as the unifying texture.
-(Verified via aescripts: WD2 used AE Pixel Sorter, RetroDither, and Data
-Glitch on trailers and in-game UI; the menu backgrounds are pre-rendered
-video authored with these treatments.)
-
-Three independent passes, any combination:
-
-**1. Cut-targeted melts — `cut_mosh.py --auto-cuts`.** Scene detection finds
-every shot boundary; the I-frame sitting on each cut is deleted, so each shot
-melts in from the previous shot's pixels. DEFAULT = LONG SMEARS: `--gop 9999`
-means I-frames exist only at detected cuts, so each melt fills the whole next
-shot (no per-second anchors). Pass `--gop 48` for shorter, snappier melts.
-
-**`--freeze N` (default 12) — Watch Dogs seam overlap.** At each cut, the
-last smeared P-frame of the outgoing shot is duplicated N times (a frozen
-hold), and the incoming shot then melts in AGAINST that frozen base — the
-new shot smears over a still image of the old shot's final smear state,
-rather than over live motion. This is the WD "freeze the last frame of one
-smeared video, use it as the base for the next smear" look. 0 = off.
+`ca_swell.py` — RGB channel split whose amplitude breathes: slow multi-oscillator base undulation plus N distinct gaussian swells at random times/widths/intensities (seeded, reproducible). Radial mode (lens-like, center clean) by default; linear mode for directional split.
 
 ```bash
-# Long smears at every detected cut + frozen seam holds (the default look):
-python scripts/cut_mosh.py input.mp4 --auto-cuts --scene 0.3 -f 24 -o out.mp4
+# Default: rest ~0.5px, 5 random swells peaking ~10-12px
+python scripts/ca_swell.py in.mp4 -o out.mp4 --min 0.5 --max 12 --swells 5 --seed 7
+# Directional split instead of radial:
+python scripts/ca_swell.py in.mp4 -o out.mp4 --mode linear --angle 30
 ```
 
-Input options: give it ONE video with existing cuts (`--auto-cuts` finds
-them), OR concatenate A+B first (`ffmpeg concat`) for melts at the junctions.
-For a single heavy A→B collapse-and-melt instead of a melt at every cut, use
-`transition_mosh.py`.
+Prints its swell peak table (time, px) so you can see the choreography before committing. `--seed` rerolls the pattern.
 
-**2. Rhythmic bloom bursts — `cut_mosh.py --bursts "frame:delta[:len],..."`.**
-Short bounded P-frame duplication inside otherwise clean footage. Bursts end
-early if they hit an I-frame (clean exit), so they never collapse the video.
+**Performance note:** the radial remap is content-free geometry — the script caches remap indices per 0.5px amplitude step and passes through frames below 0.75px. Don't "simplify" it back to per-frame index computation; that burned 4x the CPU for identical output.
+
+### Pixel-sort flicker pass (chains after anything)
+
+`flicker_sort.py` — pixel sorting switches ON for random bursts then OFF. Burst lengths randomize between `--minlen` and `--len` frames, placed with a refractory gap so flashes stay distinct events. Full row/column density during a burst (no row-skipping) so each flash reads unmistakably, then snaps back clean. Bursts up to ~24 frames (1s) read as "the image tears and re-resolves"; 1-3 frame bursts read as a twitch.
 
 ```bash
-# Bursts only (clean plate, punctuation hits):
-python scripts/cut_mosh.py input.mp4 --bursts "96:8,240:6" -o out.mp4
-
-# Melts AND bursts together (defaults: long smears + 0.5s frozen seam holds):
-python scripts/cut_mosh.py input.mp4 --auto-cuts --bursts "96:8:24" -o out.mp4
+# Mix of short twitches and ~1s tears, 10 events:
+python scripts/flicker_sort.py in.mp4 -o out.mp4 --bursts 10 --len 24 --seed 3
+# Only fast twitches:
+python scripts/flicker_sort.py in.mp4 -o out.mp4 --bursts 8 --len 3
+# More violent sort (more pixels included):
+python scripts/flicker_sort.py in.mp4 -o out.mp4 --threshold 80
+# Vertical streaks, only in the last half:
+python scripts/flicker_sort.py in.mp4 -o out.mp4 --axis v --window 491,983
 ```
 
-**3. Dither texture — `dither_mosh.py`** (chains after ANY datamosh, like
-pixelsort). Ordered Bayer dither = the crosshatch texture. Note: Salt judged
-the dither pass "cheezy" for the WD look — the WD menu does NOT use visible
-Bayer dithering; if a texture pass is wanted at all it should be very light
-(levels 8+, barely visible). Kept in the skill as an optional creative pass,
-NOT part of the default WD recipe.
-
-```bash
-# Optional, non-default:
-python scripts/dither_mosh.py out.mp4 -o final.mp4 --levels 8 --contrast 1.2 --boil 4
-# Limit dithering to A's half of a transition (B arrives clean):
-python scripts/dither_mosh.py transition.mp4 -o final.mp4 --until-frame <splice>
-```
-
-**The default WD look (verified by Salt):** `cut_mosh.py --auto-cuts` alone —
-long smears + frozen seam overlaps. No dither, no pixelsort, no
-clear-transition effects. Iterated past this (anchor bursts, clear ramps,
-ghost-plate dissolves) and rolled back: bitstream I-frame clears are
-inherently abrupt; pixel-space dissolve passes over-engineer the fix and
-read as cheezy. The abrupt clear is part of the aesthetic.
-
-### PERSISTENT MOSH + PIXELSORT (the "clean throughout" setup)
-
-The flagship combo: bloom datamosh that stays clean and re-moshes in waves instead of collapsing, then a luma-sort pass. This is the preserved, hand-tuned recipe.
-
-**The mechanism that makes it work: the I-frame refresh anchor (`--gop`).** `mosh.py`'s intermediate is encoded with `-g 9999` by default (one I-frame for the whole video), so P-frame duplication compounds with no reset and collapses into a frozen glitch loop partway through. Setting a short GOP drops periodic I-frames that act as refresh anchors — in the delta loop, in-range I-frames clear the repeat buffer and reset to clean. Corruption builds, resets, rebuilds → persistent moshing without terminal collapse.
-
-```bash
-# 1) Bloom with a 0.5s refresh anchor (GOP 12 @ 24fps), heavy P-frame reuse:
-#    -d 10 fills most P-frames in each half-second window for maximum intensity
-#    within the refresh limit. Lower -d (e.g. 6) = lighter trails.
-python scripts/mosh.py input.mp4 -d 10 -s <start> -f 24 --gop 12 -o bloom.mp4
-
-# 2) Luma-sort the moshed output:
-python scripts/pixelsort_mosh.py bloom.mp4 -o final.mp4 --axis rows --mode interval --low 50 --high 255
-```
-
-Guidance:
-- `--gop` = frames between refresh anchors (in seconds × fps). 12 @ 24fps = 0.5s. Smaller = steadier/more readable; larger = heavier corruption between resets.
-- `-d` = how many P-frames repeat = trail length. A half-second anchor caps trail length at ~GOP frames before the I-frame resets it.
-- **Tuning the collapse point:** a single long GOP with *any* bloom delta collapses at roughly the same point regardless of delta (verified: delta 1/2/3 all hit ~50/255 mean-corruption by 7-8s). Delta changes the flavor, not the collapse timing. To control *when* it collapses, change the GOP cadence — there is no delta setting that stretches a single-I-frame collapse to the last second.
-
-### A→B HEAVY GLITCH TRANSITION (datamosh to collapse, then melt into a new video)
-
-Datamosh video A into full corruption, then transition into a brand-new video B. The transition is a genuine codec-level melt, not a crossfade.
-
-**How it works (the seam):** encode A as MPEG-4 ASP with a long GOP so its corruption accumulates; encode B with a shorter GOP so it can resolve clean; stitch the frames, then **drop B's opening I-frame** so B's first P-frames decode *against A's corrupted reference frame*. B melts in glitched and only asserts itself as its motion-compensated deltas and I-frames accumulate. Chain a pixelsort pass to corrupt A's pixels and (optionally) unsort B as it arrives.
-
-```bash
-# 1) Build the codec-level transition. A corrupts; B melts in clean.
-#    -s <frame>  = output frame where B begins (default ~2/3 through A)
-#    -d / --bloom-start = P-frame duplication on A (trails / when corruption starts)
-#    --b-gop     = frames per B GOP. LONGER = slower, more gradual melt
-#                  (96 @ 24fps = 4s dissolve). Shorter = snap-clean transition.
-python scripts/transition_mosh.py A.mp4 B.mp4 -s 170 -d 8 --bloom-start 60 --b-gop 96 -o transition.mp4
-
-# 2) Pixelsort A's corrupted half, and let B arrive sorted-then-unsort into view:
-#    --until-frame <splice>  = sort only A's half, keep B clean (simple version)
-#    --unsort-start <splice> --unsort-frames N = B arrives HEAVILY sorted and
-#        unsorts progressively to clean over N frames (the "sorted wreckage
-#        resolving" look — pairs with the melt).
-python scripts/pixelsort_mosh.py transition.mp4 -o final.mp4 \
-    --axis rows --mode interval --low 50 --high 255 \
-    --unsort-start 170 --unsort-frames 96
-```
-
-Mechanics / tuning:
-- **`--unsort-start` MUST equal `-s`** (the transition splice frame). The unsort must begin exactly where B begins, or the sort/unsort will be misaligned with the melt.
-- **B must be scaled to A's resolution** (transition_mosh handles this via ffmpeg `scale=`).
-- **`--b-gop` governs melt duration.** The dissolve fills B's first GOP: a longer GOP = a longer, more gradual fade. There is no crossfade opacity — the melt is the decoder's accumulated motion-compensation error clearing out.
-- **`--unsort-*`:** `unsort_frames` = how many frames the B-side sort takes to recede to clean. Match it to the melt length (`--b-gop`) so the sort-streaks clear at the same rate the datamosh clears. Verified decay: seam diff ~62/255 → ~19 by end; residual is the datamosh blocks that only fully re-sync at B's next I-frame.
-- **Unsort works with `--mode interval`/`threshold`, not `--mode edges`** — the edges branch keys off `edge_thresh` only, so `low`/`high` (and thus the unsort ramp) have no effect there.
-- **Residual melt at the tail** is expected if B is short and `b_gop` spans most of it — give B more runway (longer clip) or a smaller `--b-gop` to fully resolve to pristine.
-- A's collapse point follows the single-I-frame rule above (`--a-gop` long = accumulates).
+Prints the burst plan (start, length) and total flicker % before rendering. `--seed` rerolls placement.
 
 ### FFglitch Motion Vector Presets (requires ffedit)
 
@@ -278,28 +193,165 @@ python scripts/ffglitch_mosh.py source.mp4 --extract vectors.dat
 python scripts/ffglitch_mosh.py target.mp4 --transfer vectors.dat -o result.mpg --mp4
 ```
 
+## Named Setups
+
+### THE "SALT TRANSITION" (hand-tuned, Salt-verified — the locked recipe)
+
+The flagship deliberate-mosh pipeline, iterated on real footage and locked.
+One command runs the whole chain:
+
+```bash
+python scripts/salt_transition.py input.mp4 -o salt.mp4
+```
+
+The four stages (each hand-verified; do NOT "improve" the defaults — they
+were tuned by eye across 7+ iterations, including rejected variants):
+
+1. **Cut melts + frozen seam holds** (`cut_mosh.py --auto-cuts`): long smears
+   at every detected cut; the outgoing shot's last smear freezes for 0.5s and
+   the next shot melts in over that frozen base.
+2. **Pixelsort** (`pixelsort_mosh.py --axis rows --mode interval --low 50`):
+   luma sort on the moshed output.
+3. **50% composite** (`ffmpeg blend=all_opacity=0.5`): the UNSORTED mosh
+   overlayed ON TOP of the sorted one. The streaks become a translucent
+   ghost texture instead of dominating — this is the trick that makes it.
+4. **Static whisper-dither** (`dither_mosh.py --levels 12 --contrast 1.0
+   --boil 0`): barely-visible locked Bayer crosshatch. Static is critical —
+   animated/boil dither flashes (rejected).
+
+Tuning dials (rarely needed): `--opacity` (sorted-layer weight, default 0.5),
+`--dither-levels` (lower = more visible dither, default 12),
+`--scene` (cut sensitivity), `--freeze` (seam hold length).
+
+### WATCH DOGS MENU STYLE (deliberate moshing — transitions + punctuation + texture)
+
+How Ubisoft's Watch Dogs menus work: not full-video collapse, but
+corruption used *deliberately* — melts at cut points as transitions, short
+bloom bursts as rhythmic punctuation, dithering as the unifying texture.
+(Verified via aescripts: WD2 used AE Pixel Sorter, RetroDither, and Data
+Glitch on trailers and in-game UI; the menu backgrounds are pre-rendered
+video authored with these treatments.)
+
+Three independent passes, any combination (NOTE: prefer `es_mosh.py` over the
+legacy `cut_mosh.py` for the melts/bursts — same operations, robust pipeline):
+
+**1. Cut-targeted melts.** Delete the I-frame at each shot boundary so each
+shot melts in from the previous shot's pixels. Long GOP = long smears.
+**Frozen seam holds (`--freeze`)** duplicate the outgoing shot's last smeared
+P-frame N times so the incoming shot melts against a still base — the WD
+"freeze the last frame of one smeared video, use it as the base for the next
+smear" look.
+
+```bash
+python scripts/es_mosh.py concat.mp4 --cuts <frame,list> --freeze 12 -f 24 -o out.mp4
+```
+
+**2. Rhythmic bloom bursts** — short bounded P-frame duplication inside
+otherwise clean footage. Bursts end early if they hit an I-frame (clean exit).
+
+```bash
+python scripts/es_mosh.py input.mp4 --bursts "96:8,240:6" -o out.mp4
+```
+
+**3. Dither texture** — optional. The WD menu does NOT use visible Bayer
+dithering; if wanted at all keep it very light (levels 8+, barely visible).
+
+**The default WD look:** melts + frozen seams alone. Iterated past this
+(anchor bursts, clear ramps, ghost-plate dissolves) and rolled back:
+bitstream I-frame clears are inherently abrupt; pixel-space dissolve passes
+over-engineer the fix and read as cheezy. The abrupt clear is part of the
+aesthetic.
+
+### PERSISTENT MOSH + PIXELSORT (the "clean throughout" setup)
+
+Bloom datamosh that stays clean and re-moshes in waves instead of collapsing, then a luma-sort pass.
+
+**The mechanism: the I-frame refresh anchor (`--gop`).** With `-g 9999` (one I-frame for the whole video), P-frame duplication compounds with no reset and collapses into a frozen glitch loop. A short GOP drops periodic I-frames that act as refresh anchors — corruption builds, resets, rebuilds → persistent moshing without terminal collapse.
+
+```bash
+# 1) Bloom with a 0.5s refresh anchor (GOP 12 @ 24fps):
+python scripts/mosh.py input.mp4 -d 10 -s <start> -f 24 --gop 12 -o bloom.mp4
+
+# 2) Luma-sort the moshed output:
+python scripts/pixelsort_mosh.py bloom.mp4 -o final.mp4 --axis rows --mode interval --low 50 --high 255
+```
+
+Guidance:
+- `--gop` = frames between refresh anchors (seconds × fps). Smaller = steadier; larger = heavier corruption between resets.
+- `-d` = how many P-frames repeat = trail length.
+- **Collapse timing is GOP-controlled, not delta-controlled:** a single long GOP collapses at roughly the same point regardless of delta (verified: delta 1/2/3 all hit ~50/255 mean-corruption by 7-8s). To control *when* it collapses, change GOP cadence.
+
+### A→B HEAVY GLITCH TRANSITION (datamosh to collapse, then melt into a new video)
+
+Datamosh video A into full corruption, then transition into a brand-new video B — a genuine codec-level melt, not a crossfade.
+
+**The seam:** encode A with a long GOP so corruption accumulates; B with a shorter GOP so it resolves clean; stitch frames; **drop B's opening I-frame** so B's first P-frames decode against A's corrupted reference. B melts in glitched and asserts itself as its deltas accumulate.
+
+```bash
+python scripts/transition_mosh.py A.mp4 B.mp4 -s 170 -d 8 --bloom-start 60 --b-gop 96 -o transition.mp4
+
+# Pixelsort A's corrupted half, B arrives sorted-then-unsorts into view:
+python scripts/pixelsort_mosh.py transition.mp4 -o final.mp4 \
+    --axis rows --mode interval --low 50 --high 255 \
+    --unsort-start 170 --unsort-frames 96
+```
+
+Mechanics / tuning:
+- **`--unsort-start` MUST equal `-s`** (the splice frame) or sort/unsort misaligns with the melt.
+- **`--b-gop` governs melt duration** — the dissolve fills B's first GOP; longer = more gradual. No crossfade opacity involved; it's decoder error clearing.
+- **Residual melt at the tail** is expected if B is short and b_gop spans most of it — give B more runway or a smaller `--b-gop`.
+- **Unsort works with `--mode interval`/`threshold`, not `--mode edges`** (edges branch keys off `edge_thresh` only).
+
+### Compositing one shot over another's last frame (shot-level alpha)
+
+For seams where the incoming shot has large flat/static regions (e.g. a
+graphic on black) and you want the outgoing frame to persist underneath and
+get progressively wiped: composite the incoming shot over the outgoing
+shot's last frame using the incoming shot's luminance as alpha, BEFORE the
+concat/melt. Why it works: mpeg4 P-frames only overwrite blocks their motion
+vectors touch — black/flat areas of the incoming shot encode as "changed"
+unless they match the reference. Pre-compositing makes flat areas literally
+match the reference, so they preserve it; bright areas (the wiping element)
+carry the motion vectors and progressively clear the frame.
+
+```bash
+# 1) Extract outgoing shot's last frame at concat resolution:
+ffmpeg -sseof -0.1 -i shotA.mp4 -frames:v 1 -vf scale=W:H lastA.png
+
+# 2) Composite (numpy): alpha = luminance of shotB, base = lastA.
+#    comp = shotB * alpha + lastA * (1 - alpha), per frame; encode as shotB_composited.mp4
+
+# 3) Use shotB_composited in the concat in place of shotB; melts as usual.
+```
+
+This is a prep step, not a skill script — adapt the numpy composite per project
+(the alpha source can be luminance, a mask, or a real alpha channel if the
+incoming render has one).
+
 ## Workflow for Agent Use
 
-When the user provides a video and asks for datamoshing/glitch effects:
+When the user provides footage and asks for datamoshing/glitch effects:
 
-1. **Verify input exists** — check file path, get duration/resolution via ffprobe
-2. **Choose effects** based on user request, or default to `melt bloom lagfun_trail chaos wave`
-3. **Run moshpit.py** with the selected effects and output directory
-4. **Report results** — list generated files with sizes
+1. **Verify input** — ffprobe duration/resolution/fps; count shots and find cut frames (user may supply them; else scene-detect or infer from concat structure)
+2. **Normalize** — all shots to one resolution/fps/SAR before any surgery
+3. **Choose the operation** — melts at cuts (es_mosh), persistent bloom (mosh), A→B (transition_mosh), or polish passes (dither/CA/pixelsort/flicker)
+4. **Run, then READ the validation output** — frame count + decode errors
+5. **Report results** — files, sizes, frame counts, and any validation warnings
 
-For a single effect, use the individual scripts directly for faster execution.
+Chain polish passes AFTER codec surgery; each is MP4-in/MP4-out and survives re-encode quantization.
 
 ## Tips
 
-- Videos with **more motion** produce better datamoshing (the codec has more vectors to corrupt)
+- Videos with **more motion** produce better datamoshing (the codec has more vectors to corrupt). Static footage melts weakly.
 - Lower resolution inputs (720p or below) give cleaner glitch artifacts than 4K
 - I-frame removal works best at scene transitions — find cuts first, then target those frame ranges
 - FFglitch outputs MPEG-1 (.mpg) which some players struggle with — always convert to MP4
 - Chain effects: melt → re-melt the output for deeper corruption (generational loss)
-- **Use a short GOP (`--gop`) for bloom/trail effects** so the mosh persists without collapsing into a frozen loop. See the PERSISTENT MOSH setup above.
+- **Use a short GOP (`--gop`) for bloom/trail effects** so the mosh persists without collapsing into a frozen loop.
 - **Chain a pixelsort pass** after any datamosh to turn trailing squares into sorted streaks.
-- **A→B transitions:** drop B's opening I-frame so B decodes against A's corrupted state — the melt duration is set by `--b-gop` (no crossfade, it's real decoder error). See the A→B TRANSITION setup.
-- **Progressive unsort** (`--unsort-start/--unsort-frames`) makes new content arrive heavily sorted and resolve to clean — pair its length with the melt GOP.
+- **A→B transitions:** drop B's opening I-frame so B decodes against A's corrupted state — melt duration is set by `--b-gop`.
+- **Progressive unsort** makes new content arrive heavily sorted and resolve to clean — pair its length with the melt GOP.
+- **Full polish chain:** melts → dither → CA swell → flicker sort. Each pass is independent; re-run only the stage you're tuning.
 
 ## Pitfalls
 
@@ -308,3 +360,7 @@ For a single effect, use the individual scripts directly for faster execution.
 - **FFglitch mpg playback issues**: Most players can't seek in corrupted MPEG-1. Convert to MP4 immediately after generation.
 - **Avidemux-style frame editing won't work on H.265/HEVC**: The byte-level I-frame detection only works with MPEG-4 ASP (Xvid) format, which is why the pipeline re-encodes first.
 - **lagfun ghost may drop frames** if the trim offset exceeds video length — ensure input is at least 1 second long.
+- **NEVER do byte-surgery on AVI containers** (the legacy `cut_mosh`/`transition_mosh` path): the `00dc` chunk marker appears inside AVI stream headers too, so splitting on it truncates the header → grey first frame; hand-rebuilding `movi` chunk sizes → green/purple chroma desync that decodes "clean" but renders garbage. Use `es_mosh.py` (raw MPEG-4 elementary stream) instead — no container, no chunk sizes to corrupt.
+- **`sc_threshold 0` does NOT stop ffmpeg's mpeg4 encoder inserting scene I-frames.** Only `-force_key_frames` gives deterministic I placement. The encoder also emits duplicate I-clusters (adjacent +1 frame indices) at some keyframes — drop whole clusters (headers AND VOPs) when melting.
+- **A bloom burst REPLACES its source window**, it doesn't append: net frame add = emitted − consumed, not the burst length. Account for this or validation frame counts won't match.
+- **Always validate after remux**: decode-error count (`ffmpeg -v error -f null -`) + exact frame count vs expected. Exit code 0 proves nothing about content — a chroma-desynced file decoded with zero errors.

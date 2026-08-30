@@ -114,7 +114,7 @@ def cut_mosh(input_video, output_video, fps=24, auto_cuts=False,
         run(
             f'ffmpeg -loglevel error -y -i "{input_video}" '
             f'-c:v mpeg4 -vtag xvid -qscale:v 4 -g {gop} -bf 0 -r {fps} '
-            f'-sc_threshold 40 -an "{in_avi}"'
+            f'-sc_threshold 0 -an "{in_avi}"'
         )
 
         print("[2/3] Byte-level frame surgery...")
