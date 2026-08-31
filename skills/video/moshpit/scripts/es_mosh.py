@@ -96,9 +96,9 @@ def parse_es(data):
             units.append((entries[i][0], entries[j][1], "I"))
             i = j + 1
         elif code == VOP:
-            # P-VOP unless it never had a header (shouldn't happen with ffmpeg,
-            # which re-emits headers per GOP)
-            units.append((pos, end, "I" if False else "P"))
+            # P-VOP. ffmpeg re-emits header clusters before every I-VOP, so a
+            # headerless VOP here is always a P-frame in this pipeline.
+            units.append((pos, end, "P"))
             i += 1
         else:
             i += 1

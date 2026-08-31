@@ -4,7 +4,7 @@ salt_transition.py — THE "Salt Transition" (hand-tuned, Salt-verified).
 
 The full Watch Dogs-style deliberate mosh chain, locked after iteration:
 
-  1. cut_mosh    — scene-detected cut melts (long smears) + frozen seam
+  1. es_mosh     — scene-detected cut melts (long smears) + frozen seam
                    holds (the outgoing shot's last smear freezes for 0.5s,
                    the next shot melts in over that frozen base)
   2. pixelsort   — luma sort (rows, interval, low 50) pass on the mosh
@@ -23,8 +23,10 @@ import sys
 import argparse
 import subprocess
 import tempfile
+import re
 
 SKILL_SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SKILL_SCRIPTS)
 
 
 def run(cmd):
@@ -33,6 +35,20 @@ def run(cmd):
     if r.returncode != 0:
         print(f"  ✗ failed (code {r.returncode})", file=sys.stderr)
         sys.exit(1)
+
+
+def detect_cuts(input_video, threshold):
+    """Scene-detect cut times (seconds) via ffmpeg — same method as legacy
+    cut_mosh, but the surgery itself is es_mosh (elementary-stream, robust)."""
+    proc = subprocess.run(
+        ['ffmpeg', '-hide_banner', '-i', input_video,
+         '-vf', f"select='gt(scene,{threshold})',metadata=print",
+         '-an', '-f', 'null', '-'],
+        capture_output=True, text=True)
+    times = []
+    for m in re.finditer(r'pts_time:([0-9.]+)', proc.stderr):
+        times.append(float(m.group(1)))
+    return sorted(set(times))
 
 
 def main():
@@ -65,10 +81,17 @@ def main():
     sorted_ = os.path.join(workdir, "sorted.mp4")
 
     try:
-        print("[1/4] Cut melts + frozen seam holds...")
-        run(f'python "{os.path.join(SKILL_SCRIPTS, "cut_mosh.py")}" '
-            f'"{args.input_video}" --auto-cuts --scene {args.scene} '
-            f'--freeze {args.freeze} -f {args.fps} -o "{mosh}"')
+        print("[1/4] Cut melts + frozen seam holds (es_mosh core)...")
+        times = detect_cuts(args.input_video, args.scene)
+        cut_frames = sorted({round(t * args.fps) for t in times})
+        cut_frames = [c for c in cut_frames if c > 0]
+        if not cut_frames:
+            print("  ! no cuts detected — nothing to melt", file=sys.stderr)
+            sys.exit(1)
+        print(f"  cuts at frames {cut_frames}")
+        import es_mosh
+        es_mosh.es_mosh(args.input_video, mosh, fps=args.fps,
+                        cuts=cut_frames, freeze=args.freeze)
 
         print("[2/4] Pixelsort pass...")
         run(f'python "{os.path.join(SKILL_SCRIPTS, "pixelsort_mosh.py")}" '
@@ -92,7 +115,10 @@ def main():
         for f in [mosh, sorted_, os.path.join(workdir, "blend.mp4")]:
             if os.path.exists(f):
                 os.remove(f)
-        os.rmdir(workdir)
+        try:
+            os.rmdir(workdir)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

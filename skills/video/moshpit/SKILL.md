@@ -40,7 +40,8 @@ All scripts live in `scripts/` relative to this skill:
 | `dither_mosh.py` | Chainable Bayer ordered-dither pass (Watch Dogs texture) | No |
 | `ca_swell.py` | Chainable chromatic-aberration pass with organic swell/recede dynamics | No |
 | `flicker_sort.py` | Pixel-sort flicker: random bursts (1 frame to 1s+) of full-density sorting on an otherwise clean video | No |
-| `salt_transition.py` | **THE "Salt Transition"** — full locked pipeline: melts + frozen seams + 50% pixelsort overlay + static whisper-dither | No |
+| `lens_stack.py` | **Bodycam/CRT lens look** — native `lenscorrection` fisheye with black corners + vignette, then edge-flip ring, edge-weighted chroma, scanlines. THE lens-distortion tool | No |
+| `salt_transition.py` | **THE "Salt Transition"** — full locked pipeline: melts + frozen seams + 50% pixelsort overlay + static whisper-dither. Stage 1 runs on the es_mosh core | No |
 
 ## Core workflow: cut-targeted melts (es_mosh.py)
 
@@ -130,7 +131,28 @@ python scripts/dither_mosh.py moshed.mp4 -o out.mp4 --levels 2 --mono
 python scripts/dither_mosh.py transition.mp4 -o out.mp4 --until-frame <splice>
 ```
 
-`--levels` (2-8, lower = heavier posterize), `--cell` (2/4/8/16 Bayer size), `--contrast` (pre-quantize luma crush, 1.4-1.6 = graphic), `--mono`, `--boil` (0 = static).
+`--levels` (lower = heavier posterize; 5-6 typical, 12 = barely-visible whisper, 2 = hard 1-bit), `--cell` (2/4/8/16 Bayer size), `--contrast` (pre-quantize luma crush, 1.4-1.6 = graphic), `--mono`, `--boil` (0 = static).
+
+### Lens/bodycam pass (chains after anything)
+
+`lens_stack.py` — THE lens-distortion tool. Stage 1 is ffmpeg's native
+`lenscorrection` filter (canonical radial model, black fill for out-of-lens
+corners — true letterboxed fisheye); stage 2 layers custom edge passes in a
+single decode/encode sweep (no round-trips): mirror-flip ring, edge-weighted
+chroma, scanlines.
+
+```bash
+# Subtle fisheye:
+python scripts/lens_stack.py in.mp4 -o out.mp4 --k1 0.1
+# Full bodycam: strong bulge, black corners, mirror ring, rim fringing, CRT rows
+python scripts/lens_stack.py in.mp4 -o out.mp4 --k1 0.25 --k2 0.15 \
+    --edge-flip 0.92 --edge-chroma 10 --vignette 0.25 --scanlines 3
+```
+
+`--k1` (positive = fisheye bulge), `--k2` (pushes distortion into the outer ring —
+the bodycam look), `--edge-flip R` (beyond fraction R of half-diagonal the image
+mirrors inward — cheap lens seeing its own housing), `--edge-chroma PX` (R/B split
+ramping 0 center → PX at rim), `--vignette`, `--scanlines`.
 
 ### Chromatic aberration swell pass (chains after anything)
 
@@ -183,14 +205,17 @@ Each preset is a JavaScript function that modifies motion vectors during decode/
 
 ```bash
 # Single preset:
-python scripts/ffglitch_mosh.py input.mp4 --preset chaos -o output.mpg --mp4
+python scripts/ffglitch_mosh.py input.mp4 --preset chaos -o output.avi --mp4
 
-# Custom JS filter:
-python scripts/ffglitch_mosh.py input.mp4 --script my_filter.js -o output.mpg
+# Custom JS filter (shipped templates: templates/custom_filters.js,
+# templates/allmind_mosh.js; scripts/filters/liquid_melt.js):
+python scripts/ffglitch_mosh.py input.mp4 --script templates/custom_filters.js -o output.avi
 
-# Extract vectors from one video, apply to another:
-python scripts/ffglitch_mosh.py source.mp4 --extract vectors.dat
-python scripts/ffglitch_mosh.py target.mp4 --transfer vectors.dat -o result.mpg --mp4
+# Extract vectors from a video and re-apply to the SAME video:
+python scripts/ffglitch_mosh.py source.mp4 --extract vectors.json
+python scripts/ffglitch_mosh.py source.mp4 --transfer vectors.json -o result.avi --mp4
+# WARNING: cross-file --transfer (extract from A, transfer onto B) SEGFAULTS
+# ffedit 0.10.2 (verified, exit 139) — do not use it across different videos.
 ```
 
 ## Named Setups
@@ -207,9 +232,9 @@ python scripts/salt_transition.py input.mp4 -o salt.mp4
 The four stages (each hand-verified; do NOT "improve" the defaults — they
 were tuned by eye across 7+ iterations, including rejected variants):
 
-1. **Cut melts + frozen seam holds** (`cut_mosh.py --auto-cuts`): long smears
-   at every detected cut; the outgoing shot's last smear freezes for 0.5s and
-   the next shot melts in over that frozen base.
+1. **Cut melts + frozen seam holds** (es_mosh core with auto scene detection):
+   long smears at every detected cut; the outgoing shot's last smear freezes
+   for 0.5s and the next shot melts in over that frozen base.
 2. **Pixelsort** (`pixelsort_mosh.py --axis rows --mode interval --low 50`):
    luma sort on the moshed output.
 3. **50% composite** (`ffmpeg blend=all_opacity=0.5`): the UNSORTED mosh
@@ -218,6 +243,10 @@ were tuned by eye across 7+ iterations, including rejected variants):
 4. **Static whisper-dither** (`dither_mosh.py --levels 12 --contrast 1.0
    --boil 0`): barely-visible locked Bayer crosshatch. Static is critical —
    animated/boil dither flashes (rejected).
+
+**Locked recipe:** all tuning dials are salt_transition.py flags — it drives
+the melt stage internally on the es_mosh core. Do not swap other surgery
+scripts into it; the look is tuned to this exact chain.
 
 Tuning dials (rarely needed): `--opacity` (sorted-layer weight, default 0.5),
 `--dither-levels` (lower = more visible dither, default 12),
@@ -335,7 +364,7 @@ When the user provides footage and asks for datamoshing/glitch effects:
 1. **Verify input** — ffprobe duration/resolution/fps; count shots and find cut frames (user may supply them; else scene-detect or infer from concat structure)
 2. **Normalize** — all shots to one resolution/fps/SAR before any surgery
 3. **Choose the operation** — melts at cuts (es_mosh), persistent bloom (mosh), A→B (transition_mosh), or polish passes (dither/CA/pixelsort/flicker)
-4. **Run, then READ the validation output** — frame count + decode errors
+4. **Run, then validate** — es_mosh.py prints frame-count/decode validation itself; for other scripts run your own check: `ffmpeg -v error -i out.mp4 -f null -` (expect no output) plus `ffprobe nb_frames` vs expected
 5. **Report results** — files, sizes, frame counts, and any validation warnings
 
 Chain polish passes AFTER codec surgery; each is MP4-in/MP4-out and survives re-encode quantization.
@@ -345,7 +374,7 @@ Chain polish passes AFTER codec surgery; each is MP4-in/MP4-out and survives re-
 - Videos with **more motion** produce better datamoshing (the codec has more vectors to corrupt). Static footage melts weakly.
 - Lower resolution inputs (720p or below) give cleaner glitch artifacts than 4K
 - I-frame removal works best at scene transitions — find cuts first, then target those frame ranges
-- FFglitch outputs MPEG-1 (.mpg) which some players struggle with — always convert to MP4
+- FFglitch outputs MPEG-4 ASP in an AVI container — pass `--mp4` or convert immediately; corrupted MPEG-4 ASP still plays poorly in many players
 - Chain effects: melt → re-melt the output for deeper corruption (generational loss)
 - **Use a short GOP (`--gop`) for bloom/trail effects** so the mosh persists without collapsing into a frozen loop.
 - **Chain a pixelsort pass** after any datamosh to turn trailing squares into sorted streaks.
@@ -357,7 +386,7 @@ Chain polish passes AFTER codec surgery; each is MP4-in/MP4-out and survives re-
 
 - **Black/green frames**: Too many I-frames deleted. The decoder has no reference data. Fix: delete fewer frames or ensure at least one I-frame per scene.
 - **Collapse into a permanent glitch loop**: Long GOP (`-g 9999`) + bloom compounds corruption until the content dies. Fix: set `--gop` (e.g. 12 @ 24fps) so periodic I-frames refresh the decoder.
-- **FFglitch mpg playback issues**: Most players can't seek in corrupted MPEG-1. Convert to MP4 immediately after generation.
+- **FFglitch AVI playback issues**: Most players struggle with corrupted MPEG-4 ASP in AVI. Pass `--mp4` to ffglitch_mosh.py or convert to MP4 immediately after generation.
 - **Avidemux-style frame editing won't work on H.265/HEVC**: The byte-level I-frame detection only works with MPEG-4 ASP (Xvid) format, which is why the pipeline re-encodes first.
 - **lagfun ghost may drop frames** if the trim offset exceeds video length — ensure input is at least 1 second long.
 - **NEVER do byte-surgery on AVI containers** (the legacy `cut_mosh`/`transition_mosh` path): the `00dc` chunk marker appears inside AVI stream headers too, so splitting on it truncates the header → grey first frame; hand-rebuilding `movi` chunk sizes → green/purple chroma desync that decodes "clean" but renders garbage. Use `es_mosh.py` (raw MPEG-4 elementary stream) instead — no container, no chunk sizes to corrupt.

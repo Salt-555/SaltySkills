@@ -46,19 +46,19 @@ def count_frames(input_video):
     return int(r.stdout.strip())
 
 
-def plan_bursts(n_frames, n_bursts, max_len, min_gap, seed, window=None):
-    """Random non-overlapping bursts of length 1..max_len with a refractory gap."""
+def plan_bursts(n_frames, n_bursts, max_len, min_len, min_gap, seed, window=None):
+    """Random non-overlapping bursts of length min_len..max_len with a
+    refractory gap. Returns sorted (start, length) list."""
     rng = random.Random(seed)
     lo, hi = window if window else (0, n_frames)
     bursts = []
     tries = 0
     while len(bursts) < n_bursts and tries < n_bursts * 50:
         tries += 1
-        start = rng.randint(lo, max(lo, hi - max_len - 1))
-        length = rng.randint(1, max_len)
-        if any(abs(start - b0) < min_gap or abs(start + length - (b0 + b1)) < min_gap
-               or (b0 <= start <= b0 + b1) or (start <= b0 <= start + length)
-               for b0, b1 in bursts):
+        length = rng.randint(min_len, max_len)
+        start = rng.randint(lo, max(lo, hi - length - 1))
+        if any(abs(start - b0) < min_gap or (b0 <= start <= b0 + b1)
+               or (start <= b0 <= start + length) for b0, b1 in bursts):
             continue
         bursts.append((start, length))
         tries = 0
@@ -124,19 +124,8 @@ def main():
         window = (max(0, int(a)), min(n, int(b)))
     min_gap = args.gap if args.gap is not None else int(fps)
 
-    bursts = []
-    rng = random.Random(args.seed)
-    lo, hi = window if window else (0, n)
-    tries = 0
-    while len(bursts) < args.bursts and tries < args.bursts * 50:
-        tries += 1
-        length = rng.randint(args.minlen, args.max_len)
-        start = rng.randint(lo, max(lo, hi - length - 1))
-        if any(abs(start - b0) < min_gap or (b0 <= start <= b0 + b1)
-               or (start <= b0 <= start + length) for b0, b1 in bursts):
-            continue
-        bursts.append((start, length))
-        tries = 0
+    bursts = plan_bursts(n, args.bursts, args.max_len, args.minlen,
+                         min_gap, args.seed, window)
     burst_map = {}
     for start, length in bursts:
         for i in range(start, start + length):
