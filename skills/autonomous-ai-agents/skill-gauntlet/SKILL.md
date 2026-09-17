@@ -1,7 +1,7 @@
 ---
-name: skill-accelerator
-description: Test, refine, and clean Hermes skills via subagent loops.
-version: 1.1.0
+name: skill-gauntlet
+description: Run skills through subagent test gauntlets to refine them.
+version: 1.2.0
 author: Hermes
 metadata:
   hermes:
@@ -56,11 +56,19 @@ scratch — load it once a skill exists and has survived one real use.
    rules, `references/` via `file_path` for depth. Fix the false sentence,
    not just the symptom. Check the index promises against the files that
    exist. Integrate ONLY what changes behavior.
-6. **Clean (next gen).** When findings are integrated, spawn one cleaning
-   subagent: drop bloat, consolidate duplicates, cut narration, tighten to
-   the house style (~100 lines simple, ~200 complex; ≤60-char description;
-   no router sections). You accept/reject its suggestions at your own
-   discretion, then bump the version.
+6. **Clean (next gen) — only when warranted.** Cleaning is not a default
+   step every generation; run it on evidence: SKILL.md drifting past
+   ~200-220 lines, the same fact documented in two places, or a test round
+   flagging wording (not missing facts) as the problem. A gen that only
+   adds new pitfalls needs the next test round, not a clean — cleaning a
+   moving target wastes the pass and invites over-trimming to justify the
+   subagent's existence. When you do run it: spawn one cleaning subagent
+   to drop bloat, consolidate duplicates, cut narration, tighten to the
+   house style (~100 lines simple, ~200 complex; ≤60-char description; no
+   router sections). You accept/reject its suggestions at your own
+   discretion, then bump the version. Expect to reject 1-2 proposals per
+   pass (route-phrase cuts and reference-file merges are the usual
+   over-reaches).
 
 ## Tester Reporting Contract (in every brief)
 
